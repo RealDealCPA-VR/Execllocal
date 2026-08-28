@@ -113,6 +113,13 @@ export default function App(): React.ReactElement {
     void refreshModels(loadSettings());
   }, [refreshModels]);
 
+  // Re-probe the server (debounced) whenever the URL changes.
+  React.useEffect(() => {
+    const timer = setTimeout(() => void refreshModels(settings), 600);
+    return () => clearTimeout(timer);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [settings.baseUrl, refreshModels]);
+
   const updateSettings = (patch: Partial<Settings>) => setSettings((prev) => ({ ...prev, ...patch }));
 
   const appendToLastAssistant = (patch: { content?: string; reasoning?: string }) => {
@@ -219,7 +226,7 @@ export default function App(): React.ReactElement {
         signal: controller.signal,
       });
       if (result.limitReached) {
-        appendToLastAssistant({ content: "\n\nn(Reached the tool-step limit for one request. Ask me to continue if there is more to do.)" });
+        appendToLastAssistant({ content: "\n\n(Reached the tool-step limit for one request. Ask me to continue if there is more to do.)" });
       }
       if (result.aborted) {
         appendToLastAssistant({ content: (result.content ? "" : "\n\n(stopped)") });
@@ -233,7 +240,6 @@ export default function App(): React.ReactElement {
           const last = next[next.length - 1];
           if (last && last.role === "assistant" && !last.content && !last.reasoning && !last.tools?.length) {
             next[next.length - 1] = failure;
-        
           } else {
             next.push(failure);
           }
@@ -405,7 +411,7 @@ export default function App(): React.ReactElement {
           placeholder="Ask about your workbook… (Enter to send)"
           onChange={(e) => setInput(e.target.value)}
           onKeyDown={onKeyDown}
-          disabled={streaming || !!pendingConfirm}
+          disabled={!!pendingConfirm}
           rows={2}
         />
         {streaming ? (
