@@ -43,6 +43,8 @@ export interface RunResult {
   content: string;
   steps: number;
   aborted: boolean;
+  /** True when the loop stopped because maxSteps ran out mid-tool-chain. */
+  limitReached: boolean;
 }
 
 export async function runAgent(o: RunOptions): Promise<RunResult> {
@@ -95,15 +97,13 @@ export async function runAgent(o: RunOptions): Promise<RunResult> {
     }
 
     if (o.signal?.aborted) {
-      return { content, steps, aborted: true };
+      return { content, steps, aborted: true, limitReached: false };
     }
 
     finalContent = content;
 
-    if (calls.length === 0 || finishReason === "done") {
-      if (calls.length === 0) {
-        return { content, steps, aborted: false };
-      }
+    if (calls.length === 0) {
+      return { content, steps, aborted: false, limitReached: false };
     }
 
     messages.push({
@@ -163,5 +163,5 @@ export async function runAgent(o: RunOptions): Promise<RunResult> {
     }
   }
 
-  return { content: finalContent, steps, aborted: false };
+  return { content: finalContent, steps, aborted: false, limitReached: true };
 }

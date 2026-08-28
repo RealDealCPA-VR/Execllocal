@@ -26,7 +26,8 @@
     "watch": "webpack --mode development --watch",
     "proxy": "node llm-proxy.js",
     "test": "tsc -p tools/tsconfig.test.json && node tools/build-test/tools/agent.test.js",
-    "check": "npm run build && npm test && office-addin-manifest validate manifest.xml"
+    "check": "npm run build && npm test && office-addin-manifest validate manifest.xml",
+    "test:integration": "tsc -p tools/tsconfig.test.json && node tools/integration-test.js"
   },
   "dependencies": {
     "@fluentui/react-components": "^9.55.1",

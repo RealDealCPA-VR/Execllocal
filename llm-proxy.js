@@ -65,7 +65,13 @@ async function main() {
         protocol: upstream.protocol,
         hostname: upstream.hostname,
         port: upstream.port || (upstream.protocol === "https:" ? 443 : 80),
-        path: targetPath,
+        // Preserve any path prefix configured in VLLM_URL (e.g. http://host:8000/api).
+        path:
+          upstream.pathname === "/"
+            ? targetPath
+            : upstream.pathname.endsWith("/")
+              ? upstream.pathname.slice(0, -1) + targetPath
+              : upstream.pathname + targetPath,
         method: clientReq.method,
         headers: { ...clientReq.headers, host: upstream.host },
       },

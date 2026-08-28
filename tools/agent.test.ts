@@ -80,6 +80,7 @@ async function testToolRoundTrip(): Promise<void> {
   });
 
   assert.strictEqual(result.content, "Done: wrote 4.");
+  assert.strictEqual(result.limitReached, false);
   assert.strictEqual(transport.requests.length, 3);
   assert.strictEqual(confirmCalls, 1); // only write_range confirmed
   assert.strictEqual(executed.length, 2);
@@ -152,6 +153,7 @@ async function testMaxStepsGuard(): Promise<void> {
   });
 
   assert.strictEqual(result.steps, 3);
+  assert.strictEqual(result.limitReached, true);
   assert.strictEqual(transport.requests.length, 3);
   console.log("PASS testMaxStepsGuard");
 }
@@ -178,9 +180,39 @@ async function testAbort(): Promise<void> {
   await testToolRoundTrip();
   await testDeclinedWrite();
   await testMaxStepsGuard();
+
+  testSseExtraction();
   await testAbort();
   console.log("ALL AGENT TESTS PASSED");
 })().catch((e) => {
   console.error("TEST FAILURE:", e);
   process.exit(1);
 });
+
+// ---- SSE extraction unit tests (Pass 2) ----
+function testSseExtraction(): void {
+  const { extractSsePayloads, DONE_PAYLOAD, SSE_PREFIX } = require("../src/taskpane/llm/sse");
+  const NL = String.fromCharCode(10);
+  const CR = String.fromCharCode(13);
+
+  // Splits complete lines, retains the partial tail.
+  const line1 = SSE_PREFIX + JSON.stringify({ a: 1 }) + NL;
+  const line2 = SSE_PREFIX + JSON.stringify({ b: 2 }) + NL;
+  const partial = SSE_PREFIX + "{" + '"c';
+  const r1 = extractSsePayloads(line1 + line2 + partial);
+  assert.deepStrictEqual(r1.payloads, [JSON.stringify({ a: 1 }), JSON.stringify({ b: 2 })]);
+  assert.strictEqual(r1.rest, partial);
+
+  // CRLF line endings are tolerated.
+  const r2 = extractSsePayloads(SSE_PREFIX + " x" + CR + NL + SSE_PREFIX + " y" + CR + NL);
+  assert.deepStrictEqual(r2.payloads, ["x", "y"]);
+
+  // Comment/keep-alive lines and blanks are ignored.
+  const r3 = extractSsePayloads(": ping" + NL + NL + SSE_PREFIX + " z" + NL);
+  assert.deepStrictEqual(r3.payloads, ["z"]);
+
+  // Constants are well-formed.
+  assert.strictEqual(SSE_PREFIX.length, 5); // data: (colon incl.; space handled by trim)
+  assert.strictEqual(DONE_PAYLOAD, "[" + "DONE" + "]");
+  console.log("PASS testSseExtraction");
+}

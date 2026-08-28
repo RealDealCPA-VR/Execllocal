@@ -6,10 +6,10 @@
 
 *The Claude-for-Excel experience — powered by **YOUR** GPU, running **YOUR** models, touching **ONLY** your data.*
 
-[![Fully Local](https://img.shields.io/badge/cloud-%%F0%%9F%%9A%%AB%%20none-107c41?style=for-the-badge)]()
-[![vLLM](https://img.shields.io/badge/powered%%20by-vLLM-ff6f00?style=for-the-badge)]()
-[![Excel](https://img.shields.io/badge/lives%%20in-Microsoft%%20Excel-217346?style=for-the-badge&logo=microsoftexcel)]()
-[![Agent](https://img.shields.io/badge/tool%%20calls-10%%20workbook%%20superpowers-blue?style=for-the-badge)]()
+[![Fully Local](https://img.shields.io/badge/cloud-%F0%9F%9A%AB%20none-107c41?style=for-the-badge)]()
+[![vLLM](https://img.shields.io/badge/powered%20by-vLLM-ff6f00?style=for-the-badge)]()
+[![Excel](https://img.shields.io/badge/lives%20in-Microsoft%20Excel-217346?style=for-the-badge&logo=microsoftexcel)]()
+[![Agent](https://img.shields.io/badge/tool%20calls-10%20workbook%20superpowers-blue?style=for-the-badge)]()
 
 </div>
 
@@ -98,7 +98,7 @@ Excel opens → **Home** ribbon → **ExcelLocal** → pick your model in Settin
 (First launch asks you to trust *"Developer CA for Microsoft Office Add-ins"* — accept once.)
 
 **No GPU at hand?** `node tools/mock-vllm.js` fakes a streaming LLM on :8000 so you can
-develop the UI on a toaster.
+develop the UI on a toaster. `MOCK_AGENT=1` makes it simulate a two-turn tool conversation.
 
 Stop everything with `npm run stop`.
 

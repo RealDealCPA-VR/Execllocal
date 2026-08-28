@@ -218,6 +218,9 @@ export default function App(): React.ReactElement {
         },
         signal: controller.signal,
       });
+      if (result.limitReached) {
+        appendToLastAssistant({ content: "\n\nn(Reached the tool-step limit for one request. Ask me to continue if there is more to do.)" });
+      }
       if (result.aborted) {
         appendToLastAssistant({ content: (result.content ? "" : "\n\n(stopped)") });
       }

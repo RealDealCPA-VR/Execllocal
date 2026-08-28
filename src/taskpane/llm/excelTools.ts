@@ -152,7 +152,8 @@ async function getWorkbookInfo(ctx: Excel.RequestContext): Promise<ToolOutcome> 
 
 async function getSelection(ctx: Excel.RequestContext): Promise<ToolOutcome> {
   const range = ctx.workbook.getSelectedRange();
-  range.load("address,rowCount,columnCount,values,formulas");
+  // Load dimensions first: a whole-column selection must not materialize 1M rows.
+  range.load("address,rowCount,columnCount");
   await ctx.sync();
   if (range.rowCount * range.columnCount > MAX_CELLS) {
     return {
@@ -160,6 +161,8 @@ async function getSelection(ctx: Excel.RequestContext): Promise<ToolOutcome> {
       summary: "Selection too large",
     };
   }
+  range.load("values,formulas");
+  await ctx.sync();
   return {
     result: {
       address: range.address,

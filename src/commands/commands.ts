@@ -1,33 +1,21 @@
 /*
- * Copyright (c) Microsoft Corporation. All rights reserved. Licensed under the MIT license.
- * See LICENSE in the project root for license information.
+ * Office command functions (FunctionFile). The manifest currently only uses
+ * the ShowTaskpane action; this file stays as the extension point for future
+ * UI-less commands. Keep it host-agnostic: no Outlook-only APIs here.
  */
 
 /* global Office */
 
 Office.onReady(() => {
-  // If needed, Office.js is ready to be called.
+  // Office.js is ready to be called from command functions.
 });
 
 /**
- * Shows a notification when the add-in command is executed.
+ * Placeholder command. Wire it to a manifest Control action when needed.
  * @param event
  */
 function action(event: Office.AddinCommands.Event) {
-  const message: Office.NotificationMessageDetails = {
-    type: Office.MailboxEnums.ItemNotificationMessageType.InformationalMessage,
-    message: "Performed action.",
-    icon: "Icon.80x80",
-    persistent: true,
-  };
-
-  // Show a notification message.
-  Office.context.mailbox.item?.notificationMessages.replaceAsync(
-    "ActionPerformanceNotification",
-    message
-  );
-
-  // Be sure to indicate when the add-in command function is complete.
+  // Nothing to do yet; always signal completion so Office never hangs.
   event.completed();
 }
 

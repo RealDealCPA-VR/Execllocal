@@ -1,0 +1,62 @@
+/*
+ * Integration test: REAL network stack, no Excel.
+ *   real HttpTransport (fetch + SSE parse)
+ *     -> https://localhost:4001 (TLS proxy, self-signed dev certs)
+ *       -> mock vLLM in MOCK_AGENT=1 mode (streams a tool_call, then a final answer)
+ *   driven by the REAL runAgent loop with a fake executor.
+ * Run: node tools/integration-test.js   (after: npx tsc -p tools/tsconfig.test.json)
+ */
+process.env.NODE_TLS_REJECT_UNAUTHORIZED = "0"; // self-signed Office dev certs
+const { spawn } = require("child_process");
+const assert = require("assert");
+const { runAgent } = require("./build-test/src/taskpane/llm/agent");
+const { HttpTransport } = require("./build-test/src/taskpane/llm/transport");
+
+function wait(ms) { return new Promise((r) => setTimeout(r, ms)); }
+
+function start(cmd, args, env) {
+  const child = spawn(cmd, args, { env: { ...process.env, ...env }, stdio: ["ignore", "pipe", "pipe"] });
+  child.stdout.on("data", () => {});
+  child.stderr.on("data", (d) => process.stderr.write("[child] " + d));
+  return child;
+}
+
+(async () => {
+  const mock = start("node", ["tools/mock-vllm.js"], { MOCK_AGENT: "1", MOCK_PORT: "8000" });
+  const proxy = start("node", ["llm-proxy.js"], { VLLM_URL: "http://localhost:8000", PROXY_PORT: "4001" });
+  await wait(2500);
+
+  try {
+    const executed = [];
+    const transport = new HttpTransport();
+    const result = await runAgent({
+      transport,
+      transportOptions: { baseUrl: "https://localhost:4001/vllm", model: "mock-model", temperature: 0 },
+      systemPrompt: "integration test",
+      history: [],
+      userMessage: "please inspect A1:B2",
+      tools: [{ type: "function", function: { name: "read_range", parameters: { type: "object", properties: {} } } }],
+      executor: {
+        execute: async (name, args) => {
+          executed.push({ name, args });
+          return { result: { ok: true, rows: 2 }, summary: "read " + args.sheet + "!" + args.address };
+        },
+      },
+      callbacks: { confirmTool: async () => true },
+    });
+
+    assert.strictEqual(result.content, "Live agent reply after tool use.");
+    assert.strictEqual(result.limitReached, false);
+    assert.strictEqual(executed.length, 1);
+    assert.strictEqual(executed[0].name, "read_range");
+    assert.deepStrictEqual(executed[0].args, { sheet: "Sheet1", address: "A1:B2" });
+    console.log("PASS integration: real fetch -> TLS proxy -> SSE tool_call -> agent loop -> executor -> final answer");
+    console.log("ALL INTEGRATION CHECKS PASSED");
+  } finally {
+    mock.kill();
+    proxy.kill();
+  }
+})().catch((e) => {
+  console.error("INTEGRATION FAILURE:", e);
+  process.exit(1);
+});

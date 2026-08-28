@@ -68,6 +68,60 @@ export class HttpTransport implements Transport {
       throw new Error("LLM request failed: HTTP " + res.status + (detail ? " - " + detail.slice(0, 300) : ""));
     }
 
+    const handlePayload = (payload: string): StreamEvent[] => {
+      if (payload === DONE_PAYLOAD) {
+        return [{ type: "finish", reason: "done" }];
+      }
+      let chunk: {
+        choices?: Array<{
+          delta?: {
+            content?: string;
+            reasoning_content?: string;
+            reasoning?: string;
+            tool_calls?: Array<{
+              index?: number;
+              id?: string;
+              function?: { name?: string; arguments?: string };
+            }>;
+          };
+          finish_reason?: string | null;
+        }>;
+      };
+      try {
+        chunk = JSON.parse(payload);
+      } catch {
+        return []; // keep-alive or malformed line
+      }
+      const choice = chunk.choices?.[0];
+      if (!choice) {
+        return [];
+      }
+      const events: StreamEvent[] = [];
+      const delta = choice.delta ?? {};
+      const reasoning = delta.reasoning_content ?? delta.reasoning;
+      if (reasoning) {
+        events.push({ type: "reasoning-delta", text: reasoning });
+      }
+      if (delta.content) {
+        events.push({ type: "content-delta", text: delta.content });
+      }
+      if (delta.tool_calls) {
+        for (const tc of delta.tool_calls) {
+          const index = tc.index ?? 0;
+          if (tc.id || tc.function?.name) {
+            events.push({ type: "tool-call-start", index, id: tc.id ?? "", name: tc.function?.name ?? "" });
+          }
+          if (tc.function?.arguments) {
+            events.push({ type: "tool-call-args", index, argsDelta: tc.function.arguments });
+          }
+        }
+      }
+      if (choice.finish_reason) {
+        events.push({ type: "finish", reason: choice.finish_reason });
+      }
+      return events;
+    };
+
     const reader = res.body.getReader();
     const decoder = new TextDecoder();
     let buffer = "";
@@ -84,52 +138,15 @@ export class HttpTransport implements Transport {
           yield { type: "finish", reason: "done" };
           continue;
         }
-        let chunk: {
-          choices?: Array<{
-            delta?: {
-              content?: string;
-              reasoning_content?: string;
-              reasoning?: string;
-              tool_calls?: Array<{
-                index?: number;
-                id?: string;
-                function?: { name?: string; arguments?: string };
-              }>;
-            };
-            finish_reason?: string | null;
-          }>;
-        };
-        try {
-          chunk = JSON.parse(payload);
-        } catch {
-          continue; // keep-alive or malformed line
+        for (const ev of handlePayload(payload)) {
+          yield ev;
         }
-        const choice = chunk.choices?.[0];
-        if (!choice) {
-          continue;
-        }
-        const delta = choice.delta ?? {};
-        const reasoning = delta.reasoning_content ?? delta.reasoning;
-        if (reasoning) {
-          yield { type: "reasoning-delta", text: reasoning };
-        }
-        if (delta.content) {
-          yield { type: "content-delta", text: delta.content };
-        }
-        if (delta.tool_calls) {
-          for (const tc of delta.tool_calls) {
-            const index = tc.index ?? 0;
-            if (tc.id || tc.function?.name) {
-              yield { type: "tool-call-start", index, id: tc.id ?? "", name: tc.function?.name ?? "" };
-            }
-            if (tc.function?.arguments) {
-              yield { type: "tool-call-args", index, argsDelta: tc.function.arguments };
-            }
-          }
-        }
-        if (choice.finish_reason) {
-          yield { type: "finish", reason: choice.finish_reason };
-        }
+      }
+    }
+    // Flush any final line the server sent without a trailing newline.
+    for (const payload of extractSsePayloads(buffer + "\n").payloads) {
+      for (const ev of handlePayload(payload)) {
+        yield ev;
       }
     }
   }
