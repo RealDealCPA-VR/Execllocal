@@ -86,14 +86,16 @@ vllm serve <model> --enable-auto-tool-choice --tool-call-parser glm45    # GLM-4
 > Use the parser that matches your model (`vllm serve --tool-call-parser=help`). Any
 > OpenAI-compatible server with streaming + tools works too (Ollama, LM Studio, llama.cpp).
 
-**2. Wire it up:**
+**2. Launch (one terminal — bridges built in):**
 
 ```bash
 npm install
-npm run proxy        # Terminal A: https://localhost:4001/vllm -> http://localhost:8000
-npm start            # Terminal B: build + serve + sideload into desktop Excel
+npm start
 ```
-
+Windows shortcut: double-click `start-excellocal.cmd` (installs + starts). The dev server
+includes same-origin LLM bridges, so the pane talks to your server with zero configuration:
+`/vllm` (localhost:8000), `/ollama` (11434), `/lmstudio` (1234) — pick yours in the pane's
+Settings. Custom HTTPS-reachable endpoint? Choose Custom URL (or the optional `npm run proxy`).
 **3. Click the button:**
 
 Excel opens → **Home** ribbon → **ExcelLocal** → pick your model in Settings → go wild.

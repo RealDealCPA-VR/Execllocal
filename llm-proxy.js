@@ -17,14 +17,14 @@
  *   PROXY_PORT  listen port        (default 4001)
  */
 const https = require("https");
-const http = require("http");
+const devCerts = require("office-addin-dev-certs");
 const fs = require("fs");
 const path = require("path");
 const os = require("os");
+const { createForwardHandler } = require("./llm-forward");
 
 const PROXY_PORT = Number(process.env.PROXY_PORT || 4001);
 const VLLM_URL = process.env.VLLM_URL || "http://localhost:8000";
-
 async function getTlsOptions() {
   // Prefer the Office dev certificates that already exist on disk — loading
   // them directly avoids re-triggering the CA-install prompt on every start.
@@ -41,64 +41,12 @@ async function getTlsOptions() {
 }
 
 async function main() {
-  const upstream = new URL(VLLM_URL);
   const tlsOptions = await getTlsOptions();
 
+  const forward = createForwardHandler(VLLM_URL, { stripPrefix: true });
+
   const server = https.createServer(tlsOptions, (clientReq, clientRes) => {
-    // The task pane origin differs from ours; answer every preflight and
-    // tag every response so the browser accepts the call.
-    clientRes.setHeader("Access-Control-Allow-Origin", "*");
-    clientRes.setHeader("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
-    clientRes.setHeader("Access-Control-Allow-Headers", "Content-Type, Authorization");
-
-    if (clientReq.method === "OPTIONS") {
-      clientRes.writeHead(204);
-      clientRes.end();
-      return;
-    }
-
-    // Strip the /vllm prefix: /vllm/v1/chat/completions -> /v1/chat/completions
-    const targetPath = clientReq.url.replace(/^\/vllm/, "") || "/";
-
-    const upstreamReq = http.request(
-      {
-        protocol: upstream.protocol,
-        hostname: upstream.hostname,
-        port: upstream.port || (upstream.protocol === "https:" ? 443 : 80),
-        // Preserve any path prefix configured in VLLM_URL (e.g. http://host:8000/api).
-        path:
-          upstream.pathname === "/"
-            ? targetPath
-            : upstream.pathname.endsWith("/")
-              ? upstream.pathname.slice(0, -1) + targetPath
-              : upstream.pathname + targetPath,
-        method: clientReq.method,
-        headers: { ...clientReq.headers, host: upstream.host },
-      },
-      (upstreamRes) => {
-        clientRes.writeHead(upstreamRes.statusCode || 502, upstreamRes.headers);
-        upstreamRes.pipe(clientRes); // SSE streams pass through untouched
-      }
-    );
-
-    upstreamReq.on("error", (err) => {
-      if (!clientRes.headersSent) {
-        clientRes.writeHead(502, { "Content-Type": "application/json" });
-      }
-      clientRes.end(
-        JSON.stringify({
-          error: `Cannot reach LLM server at ${VLLM_URL}: ${err.message}`,
-        })
-      );
-    });
-
-    // If the user hits "Stop" in the chat, kill the upstream request so the
-    // GPU stops generating.
-    const abortUpstream = () => upstreamReq.destroy();
-    clientRes.on("close", abortUpstream);
-    clientReq.on("aborted", abortUpstream);
-
-    clientReq.pipe(upstreamReq);
+    forward(clientReq, clientRes);
   });
 
   server.listen(PROXY_PORT, () => {

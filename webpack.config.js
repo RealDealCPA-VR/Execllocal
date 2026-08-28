@@ -4,6 +4,7 @@ const devCerts = require("office-addin-dev-certs");
 const CopyWebpackPlugin = require("copy-webpack-plugin");
 const HtmlWebpackPlugin = require("html-webpack-plugin");
 const webpack = require("webpack");
+const { createForwardHandler } = require("./llm-forward");
 
 const urlDev = "https://localhost:3000/";
 const urlProd = urlDev; // fully local project: no production host, keep localhost URLs
@@ -108,6 +109,14 @@ module.exports = async (env, options) => {
         options: env.WEBPACK_BUILD || options.https !== undefined ? options.https : await getHttpsOptions(),
       },
       port: process.env.npm_package_config_dev_server_port || 3000,
+      // Same-origin LLM bridges: the pane talks to /vllm, /ollama or /lmstudio
+      // and requests are forwarded to the local servers. No CORS, no second terminal.
+      setupMiddlewares: (middlewares, devServer) => {
+        devServer.app.use("/vllm", createForwardHandler(process.env.VLLM_URL || "http://localhost:8000", { stripPrefix: false }));
+        devServer.app.use("/ollama", createForwardHandler(process.env.OLLAMA_URL || "http://localhost:11434", { stripPrefix: false }));
+        devServer.app.use("/lmstudio", createForwardHandler(process.env.LMSTUDIO_URL || "http://localhost:1234", { stripPrefix: false }));
+        return middlewares;
+      },
     },
   };
 

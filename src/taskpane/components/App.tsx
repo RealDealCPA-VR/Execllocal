@@ -8,8 +8,12 @@ import { buildWorkbookSummary, buildSystemPrompt } from "../llm/context";
 
 /* global localStorage, AbortController */
 
+export type ServerType = "vllm" | "ollama" | "lmstudio" | "custom";
+
 interface Settings {
-  baseUrl: string;
+  serverType: ServerType;
+  /** Used only when serverType is custom. Must be reachable over HTTPS. */
+  customUrl: string;
   apiKey: string;
   model: string;
   temperature: number;
@@ -34,19 +38,41 @@ interface ChatMessage {
 const SETTINGS_KEY = "excellocal.settings.v1";
 
 const DEFAULT_SETTINGS: Settings = {
-  // Local HTTPS proxy in front of vLLM (see llm-proxy.js).
-  baseUrl: "https://localhost:4001/vllm",
+  // Same-origin bridge served by `npm start` itself (see llm-forward.js).
+  serverType: "vllm",
+  customUrl: "https://localhost:4001/vllm",
   apiKey: "",
   model: "",
   temperature: 0.7,
   confirmWrites: true,
 };
 
+/** The pane-facing URL for the chosen server type (same-origin bridges by default). */
+function resolveBaseUrl(s: Settings): string {
+  switch (s.serverType) {
+    case "vllm":
+      return "/vllm";
+    case "ollama":
+      return "/ollama";
+    case "lmstudio":
+      return "/lmstudio";
+    default:
+      return s.customUrl;
+  }
+}
+
 function loadSettings(): Settings {
   try {
     const raw = localStorage.getItem(SETTINGS_KEY);
     if (raw) {
-      return { ...DEFAULT_SETTINGS, ...(JSON.parse(raw) as Partial<Settings>) };
+      const stored = JSON.parse(raw) as Partial<Settings> & { baseUrl?: string };
+      if (stored.baseUrl && !stored.serverType) {
+        // migrate pre-multi-server settings
+        stored.serverType = "custom";
+        stored.customUrl = stored.baseUrl;
+        delete stored.baseUrl;
+      }
+      return { ...DEFAULT_SETTINGS, ...(stored as Partial<Settings>) };
     }
   } catch {
     /* corrupted settings: fall through to defaults */
@@ -89,7 +115,7 @@ export default function App(): React.ReactElement {
   const refreshModels = React.useCallback(async (s: Settings) => {
     setConnectionError(null);
     try {
-      const res = await fetch(s.baseUrl + "/v1/models", { headers: authHeaders(s) });
+      const res = await fetch(resolveBaseUrl(s) + "/v1/models", { headers: authHeaders(s) });
       if (!res.ok) {
         throw new Error("HTTP " + res.status);
       }
@@ -102,8 +128,8 @@ export default function App(): React.ReactElement {
     } catch (e) {
       setModels([]);
       setConnectionError(
-        "Cannot reach LLM server at " + s.baseUrl + " (" + (e as Error).message + "). " +
-          "Is vLLM running, and did you start the proxy (npm run proxy)?"
+        "Cannot reach LLM server at " + resolveBaseUrl(s) + " (" + (e as Error).message + "). " +
+          "Is the LLM server running? vLLM :8000, Ollama :11434, LM Studio :1234."
       );
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -118,7 +144,7 @@ export default function App(): React.ReactElement {
     const timer = setTimeout(() => void refreshModels(settings), 600);
     return () => clearTimeout(timer);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [settings.baseUrl, refreshModels]);
+  }, [settings.serverType, settings.customUrl, refreshModels]);
 
   const updateSettings = (patch: Partial<Settings>) => setSettings((prev) => ({ ...prev, ...patch }));
 
@@ -201,7 +227,7 @@ export default function App(): React.ReactElement {
       const result = await runAgent({
         transport: transportRef.current!,
         transportOptions: {
-          baseUrl: settings.baseUrl,
+          baseUrl: resolveBaseUrl(settings),
           apiKey: settings.apiKey || undefined,
           model: settings.model,
           temperature: settings.temperature,
@@ -299,14 +325,28 @@ export default function App(): React.ReactElement {
       {showSettings && (
         <div className="settings-panel">
           <label className="field">
-            <span>Server URL</span>
-            <input
-              type="text"
-              value={settings.baseUrl}
-              onChange={(e) => updateSettings({ baseUrl: e.target.value })}
-              spellCheck={false}
-            />
+            <span>LLM server</span>
+            <select
+              value={settings.serverType}
+              onChange={(e) => updateSettings({ serverType: e.target.value as ServerType })}
+            >
+              <option value="vllm">vLLM (localhost:8000)</option>
+              <option value="ollama">Ollama (localhost:11434)</option>
+              <option value="lmstudio">LM Studio (localhost:1234)</option>
+              <option value="custom">Custom URL…</option>
+            </select>
           </label>
+          {settings.serverType === "custom" && (
+            <label className="field">
+              <span>Endpoint URL (must be HTTPS-reachable)</span>
+              <input
+                type="text"
+                value={settings.customUrl}
+                onChange={(e) => updateSettings({ customUrl: e.target.value })}
+                spellCheck={false}
+              />
+            </label>
+          )}
           <label className="field">
             <span>Model</span>
             <select value={settings.model} onChange={(e) => updateSettings({ model: e.target.value })}>

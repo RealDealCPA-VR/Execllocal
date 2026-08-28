@@ -37,23 +37,25 @@ Not sure which parser? `vllm serve --tool-call-parser=help` lists them all.
 
 ## Part 3 — Launch the add-in
 
-Open **two terminals** in the project folder:
+Open the project folder in a terminal:
 
 ```bash
-# Terminal A — the local HTTPS bridge (leave it running)
-npm run proxy
-#    → ExcelLocal LLM proxy listening on https://localhost:4001/vllm
-
-# Terminal B — build, serve the UI, and sideload into Excel
+# everything in one command: dev server + built-in LLM bridges + sideload
 npm start
 ```
+
+Windows shortcut: double-click `start-excellocal.cmd` (installs + starts).
+
+The dev server has **built-in same-origin bridges**, so the pane needs zero config:
+`/vllm` forwards to vLLM on :8000, `/ollama` to :11434, `/lmstudio` to :1234.
+
 
 - First launch: Windows asks to trust **"Developer CA for Microsoft Office Add-ins"** — accept once.
 - Excel opens automatically. Go to **Home → ExcelLocal** and click the button.
 - The pane opens on the right. If Excel opened without the pane, use **Insert → My Add-ins →
   Developer Add-ins → ExcelLocal**.
 
-Done experimenting? `npm run stop` unloads the add-in (keeps Terminal A free to close too).
+Done experimenting? `npm run stop` unloads the add-in.
 
 ## Part 4 — The 30-second tour of the pane
 
@@ -82,7 +84,7 @@ Click the **gear**:
 
 | Field | What to put |
 |---|---|
-| **Server URL** | `https://localhost:4001/vllm` (default — the proxy in front of vLLM). Pointing at Ollama instead? `https://localhost:4001/ollama` won't work out of the box — run the proxy with `VLLM_URL=http://localhost:11434` and keep the default URL. |
+| **LLM server** | Pick vLLM (localhost:8000), Ollama (11434) or LM Studio (1234) from the dropdown — zero typing. Anything else: *Custom URL...* (must be HTTPS-reachable, e.g. via the optional `npm run proxy`). |
 | **Model** | auto-populated from your server's `/v1/models` — pick one |
 | **API key** | leave empty for local servers |
 | **Temp** | 0.2–0.7 for spreadsheet work (lower = more precise tool calls) |
@@ -122,10 +124,10 @@ the tool chips let you audit every step.
 
 | Symptom | Fix |
 |---|---|
-| Red banner *"Cannot reach LLM server…"* | Is vLLM up (`curl http://localhost:8000/v1/models`)? Is Terminal A running? Right port? |
+| Red banner *"Cannot reach LLM server..."* | Is the LLM server up (`curl http://localhost:8000/v1/models`)? Right server type picked in Settings? |
 | Chat works but model never *does* anything | vLLM missing `--enable-auto-tool-choice --tool-call-parser <family>` (Part 2) |
 | Model makes tool calls that error instantly | Wrong parser for the model family; or the model is too small for tool use |
-| Pane is blank / doesn't load | `npm run stop`, then `npm start` again; make sure Terminal A is running |
+| Pane is blank / doesn't load | `npm run stop`, then `npm start` again |
 | *"Reached the tool-step limit"* | Big task — reply "continue" and it picks up where it stopped |
 | Huge sheet, model seems blind | Snapshot shows the first rows only; ask it to `read_range` specific columns |
 | HTTPS warning on first start | Accept the dev-certificate dialog; it's a one-time local cert |
@@ -141,6 +143,7 @@ npm run build           # production webpack build
 ```
 
 - Hot reload: `npm start` keeps webpack watching; edit `src/taskpane/**` and the pane refreshes.
+- `npm run proxy` is optional now — only for reaching a Custom HTTP endpoint (standalone HTTPS bridge on :4001).
 - Simulate tool conversations without a GPU: `MOCK_AGENT=1 node tools/mock-vllm.js`.
 - The agent loop (`src/taskpane/llm/agent.ts`) is pure TypeScript — extend `tools.ts` +
   `excelTools.ts` to add new superpowers.
