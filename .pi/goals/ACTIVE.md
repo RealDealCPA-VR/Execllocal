@@ -41,6 +41,7 @@ Last updated: 2026-08-28 16:05
 - [x] T009: Final regression (build + test-agent + manifest validate) + independent reviewer subagent on diff | Verify: all PASS; review findings fixed or documented (A9)
 
 ## Progress and evidence
+- 16:20 post-verification wave: consolidated check re-run (build PASS / 4 tests PASS / manifest valid / syntax PASS / dist artifacts present). Production URL-rewrite to contoso removed (urlProd=urlDev; 0 contoso refs in dist) since the project is permanently local. Added .gitignore, npm run check (build+test+validate in one command). Git snapshot created: commit d063f81.
 - 16:05 T007 done: App.tsx (421 lines) integrated with agent loop: HttpTransport, workbook snapshot per turn, streamed deltas + reasoning collapse, tool-run chips with status transitions, write-confirmation overlay (settings toggle, default ON), stop button aborts + resolves pending confirm. Build PASS. Dead inputRef removed; tool-run/confirm/check CSS added.
 - 16:05 T008 done: README.md (121 lines): architecture diagram, vLLM tool-parser flags, run steps, mock server, tool table, limitations, privacy.
 - 16:05 T009 done: regression npm run build PASS / npm test 4 PASS / manifest validate PASS / node --check proxy+mock PASS. Reviewer subagent invoked twice, output capture returned empty both times; manual evidence-based review performed instead: manifest resid cross-check (0 missing), leftover/debug grep (none), dedupe check, agent.ts/transport.ts/excelTools.ts logic re-read. Verdict APPROVED with 2 display nits (parallel same-name tool chips; finish event overwrite) — no functional impact, results routed via tool_call_id.
@@ -56,7 +57,7 @@ Last updated: 2026-08-28 16:05
 - 2026-08-28 14:56 (initial): inspected src tree; build PASS evidence from earlier run; mock file corruption confirmed via node --check.
 
 ## Handoff
-- Current checkpoint: COMPLETE. Fully local Excel add-in: React+TS pane (chat UI, agent loop, 10 workbook tools), HTTPS LLM proxy, mock vLLM for GPU-less dev, agent-loop test suite, README.
+- Current checkpoint: COMPLETE (git d063f81). Fully local Excel add-in: React+TS pane (chat UI, agent loop, 10 workbook tools), HTTPS LLM proxy, mock vLLM for GPU-less dev, agent-loop test suite, README.
 - Last completed: T009 (final regression + review).
 - In progress: none.
 - Next exact action: none (goal complete). For first real use: start vLLM with tool-call parser flags, run "npm run proxy" then "npm start", accept the dev-cert prompt once, click ExcelLocal on the Home ribbon.
