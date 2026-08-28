@@ -17,6 +17,8 @@
 
 ## 😤 The pitch
 
+*New here? Read the step-by-step [TUTORIAL.md](TUTORIAL.md) — zero to AI-driven spreadsheets in ten short parts.*
+
 Cloud copilots read your spreadsheets, ship your data to someone else's datacenter, and charge
 you monthly for the privilege. **ExcelLocal says no.**
 
