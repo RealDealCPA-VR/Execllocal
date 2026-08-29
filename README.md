@@ -188,6 +188,7 @@ manifest.xml                      Office add-in manifest (validated)
 - **Port 3000 busy** — `npm start` needs it for the pane; close whatever owns it (a reboot works) or run `npm run stop` first.
 - **Office.js CDN** — the one standard exception to "fully local": the pane boots Microsoft's Office.js from their CDN (cached after first load). Your prompts, workbook data, and model traffic never leave your machine.
 - **First `npm start`** — Windows asks once to trust the Office dev certificate. Say yes.
+- **No debug dialog** — `npm start` runs without WebView debugging, so Office never asks to attach VS Code. Want to debug the pane? `npm run start:debug`.
 
 ## 🕊️ Privacy statement
 

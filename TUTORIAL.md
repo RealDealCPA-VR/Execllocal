@@ -140,6 +140,7 @@ the tool chips let you audit every step.
 | Chat works but model never *does* anything | vLLM missing `--enable-auto-tool-choice --tool-call-parser <family>` (Part 2) |
 | Model makes tool calls that error instantly | Wrong parser for the model family; or the model is too small for tool use |
 | `npm start` says port 3000 is busy | Close whatever owns the port (a reboot works) or run `npm run stop` first |
+| A dialog asks to *debug the webview* / attach VS Code | You launched with debugging on. Use `npm start` (dialog-free) instead of `npm run start:debug`; if it keeps appearing: `reg add HKCUSOFTWAREMicrosoftOffice.0WEFDeveloper<add-in-id> /v UseDirectDebugger /t REG_DWORD /d 0 /f` |
 | Pane is blank / doesn't load | `npm run stop`, then `npm start` again |
 | *"Reached the tool-step limit"* | Big task — reply "continue" and it picks up where it stopped |
 | Huge sheet, model seems blind | Snapshot shows the first rows only; ask it to `read_range` specific columns |
@@ -156,6 +157,7 @@ npm run build           # production webpack build
 ```
 
 - Hot reload: `npm start` keeps webpack watching; edit `src/taskpane/**` and the pane refreshes.
+- `npm run start:debug` — same launch but with WebView debugging enabled (Office will offer to attach VS Code).
 - `npm run proxy` is optional now — only for reaching a Custom HTTP endpoint (standalone HTTPS bridge on :4001).
 - Simulate tool conversations without a GPU: `MOCK_AGENT=1 node tools/mock-vllm.js`.
 - The agent loop (`src/taskpane/llm/agent.ts`) is pure TypeScript — extend `tools.ts` +

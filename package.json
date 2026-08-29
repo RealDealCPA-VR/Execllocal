@@ -20,14 +20,15 @@
     "prettier": "office-addin-lint prettier",
     "signin": "office-addin-dev-settings m365-account login",
     "signout": "office-addin-dev-settings m365-account logout",
-    "start": "office-addin-debugging start manifest.xml",
+    "start": "office-addin-debugging start manifest.xml --no-debug",
     "stop": "office-addin-debugging stop manifest.xml",
     "validate": "office-addin-manifest validate manifest.xml",
     "watch": "webpack --mode development --watch",
     "proxy": "node llm-proxy.js",
     "test": "tsc -p tools/tsconfig.test.json && node tools/build-test/tools/agent.test.js",
     "check": "npm run build && npm test && office-addin-manifest validate manifest.xml",
-    "test:integration": "tsc -p tools/tsconfig.test.json && node tools/integration-test.js"
+    "test:integration": "tsc -p tools/tsconfig.test.json && node tools/integration-test.js",
+    "start:debug": "office-addin-debugging start manifest.xml"
   },
   "dependencies": {
     "@fluentui/react-components": "^9.55.1",
