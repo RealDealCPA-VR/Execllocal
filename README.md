@@ -47,34 +47,44 @@ You:   "🤯 and it never left my machine"
 | 🛡️ | **Confirm-before-write** — the model asks before it touches your cells (toggleable) |
 | 👁️ | **Selection awareness** — fresh workbook snapshot (sheets, headers, samples, selection) injected every turn |
 | 🎥 | **Streaming everything** — SSE deltas, collapsible "Thinking" for reasoning models (GLM/Qwen3) |
-| 🔒 | **Zero egress** — pane → local proxy → local GPU → back. That's the whole journey |
+| 🔒 | **Zero egress** — pane → built-in bridge → your GPU → back. That's the whole journey |
 | 🧪 | **Tested** — agent-loop suite runs with a scripted transport, no Excel or GPU needed |
 | ♻️ | **GPU-optional dev** — mock vLLM server included so you can hack the UI anywhere |
 
 ## 🗺️ Architecture (beautifully paranoid)
 
-```
-+--------------------------------------------------------------+
-|  Excel desktop (Microsoft 365)                                |
-|  +--------------------------------------------------------+  |
-|  | Task pane  https://localhost:3000                       |  |
-|  |   chat UI -> agent loop -> Office.js tools              |  |
-|  +---------------------------+-----------------------------+  |
-+------------------------------|--------------------------------+
-                               |  HTTPS (Office dev certs)
-                               v
-              https://localhost:4001/vllm     <- llm-proxy.js
-                               |  plain HTTP (your LAN, your machine)
-                               v
-              vLLM OpenAI server  http://localhost:8000
-              (your GPU: GLM-Flash, Qwen3-27B, ... anything OpenAI-shaped)
+```text
++------------------------------------------------------------------+
+|  Excel desktop (Microsoft 365)                                   |
+|  +-----------------------------------------------------------+  |
+|  | Task pane  https://localhost:3000/taskpane.html            |  |
+|  |   chat UI -> agent loop -> Office.js tools                 |  |
+|  +------------------------------+-----------------------------+  |
++---------------------------------|--------------------------------+
+                                  |  HTTPS (Office dev certs)
+                                  v
+  npm start dev server  https://localhost:3000
+    same-origin bridges (built in):
+    /vllm -> :8000   /ollama -> :11434   /lmstudio -> :1234
+    /bridge -> any private/tailnet target you type as Custom URL
+                                  |  plain HTTP (localhost / LAN / tailnet)
+                                  v
+  your LLM server  (vLLM, Ollama, LM Studio... anything OpenAI-shaped)
+  (your GPU: GLM-Flash, Qwen3-27B, ...)
 ```
 
-Why the proxy? Office serves task panes over HTTPS, and browsers refuse to let an HTTPS page
-call plain HTTP (mixed content). `llm-proxy.js` fronts your LLM server with the same Office dev
-certificates Excel already trusts. That's the whole trick.
+Why a bridge at all? Office serves task panes over HTTPS, and browsers refuse to let an
+HTTPS page call plain HTTP (mixed content). `npm start` therefore embeds the bridge itself:
+the pane talks same-origin to `/vllm` (etc.), and the dev server forwards to your plain-HTTP
+LLM server using the Office dev certificates Excel already trusts. That's the whole trick.
+Running an LLM on another box (tailnet/LAN)? Type its http:// address as a Custom URL and the
+`/bridge` route forwards to it — private ranges only, never the public internet.
+`npm run proxy` remains as an optional standalone bridge (https://localhost:4001/vllm) for
+anything exotic.
 
 ## 🚀 90-second quickstart
+
+**You need:** Node.js 18+ · Microsoft 365 Excel (desktop) · a local LLM server (vLLM, Ollama, LM Studio, llama.cpp — anything OpenAI-shaped).
 
 **1. Serve a brain** — vLLM with tool calling switched ON:
 
@@ -83,30 +93,27 @@ vllm serve <model> --enable-auto-tool-choice --tool-call-parser hermes    # Qwen
 vllm serve <model> --enable-auto-tool-choice --tool-call-parser glm45    # GLM-4.5/4.6 family
 ```
 
-> Use the parser that matches your model (`vllm serve --tool-call-parser=help`). Any
-> OpenAI-compatible server with streaming + tools works too (Ollama, LM Studio, llama.cpp).
+> Use the parser that matches your model (`vllm serve --tool-call-parser=help`).
 
-**2. Launch (one terminal — bridges built in):**
+**2. Launch — one terminal, everything built in:**
 
 ```bash
-npm install
-npm start
+npm install   # first run only
+npm start     # builds, serves the pane, bridges /vllm /ollama /lmstudio, sideloads into Excel
 ```
-Windows shortcut: double-click `start-excellocal.cmd` (installs + starts). The dev server
-includes same-origin LLM bridges, so the pane talks to your server with zero configuration:
-`/vllm` (localhost:8000), `/ollama` (11434), `/lmstudio` (1234) — pick yours in the pane's
-Settings. Custom HTTPS-reachable endpoint? Choose Custom URL (or the optional `npm run proxy`).
+
+- Windows shortcut: double-click `start-excellocal.cmd` (installs + starts).
+- **Keep this terminal open** — it is serving the add-in pane for as long as you use ExcelLocal.
+- First launch asks you to trust *"Developer CA for Microsoft Office Add-ins"* — accept once.
+- Done for the day? `npm run stop` unloads the add-in, then close the terminal.
+
+**3. In Excel:** **Home** ribbon → **ExcelLocal** → gear icon → pick your **LLM server** (vLLM / Ollama / LM Studio / Custom URL) and **model** from the auto-populated list → chat.
+
+> Serving models on another box (Tailscale/LAN, plain HTTP)? Pick **Custom URL** and type its `http://` address — see the next section.
 
 ### 🌐 Models on another machine (Tailscale/LAN, plain HTTP)
 
-Serving vLLM on your tailnet or LAN at, say, `http://my-gpu-box:8000`? Choose **Custom URL**
-in Settings and type exactly that. The dev server bridges it automatically (same-origin),
-restricted to private ranges: localhost, 10.x, 172.16-31.x, 192.168.x, 100.64.0.0/10 (Tailscale),
-`*.ts.net`, `*.local`. Public addresses are refused — the bridge is your private tunnel, not an open proxy.
-**3. Click the button:**
-
-Excel opens → **Home** ribbon → **ExcelLocal** → pick your model in Settings → go wild.
-(First launch asks you to trust *"Developer CA for Microsoft Office Add-ins"* — accept once.)
+Serving vLLM on your tailnet or LAN at, say, `http://my-gpu-box:8000`? Choose **Custom URL** in Settings and type exactly that. The dev server bridges it automatically (same-origin), restricted to private ranges: localhost, 10.x, 172.16-31.x, 192.168.x, 100.64.0.0/10 (Tailscale), `*.ts.net`, `*.local`. Public addresses are refused — the bridge is your private tunnel, not an open proxy.
 
 **No GPU at hand?** `node tools/mock-vllm.js` fakes a streaming LLM on :8000 so you can
 develop the UI on a toaster. `MOCK_AGENT=1` makes it simulate a two-turn tool conversation.
@@ -155,7 +162,8 @@ src/taskpane/llm/agent.ts         the agent loop (pure, unit-tested)
 src/taskpane/llm/tools.ts         tool schemas exposed to the model
 src/taskpane/llm/excelTools.ts    Office.js tool implementations
 src/taskpane/llm/context.ts       workbook snapshot builder + system prompt
-llm-proxy.js                      local HTTPS proxy (the mixed-content fix)
+llm-forward.js                    shared forwarding logic (dev-server bridges + standalone proxy)
+llm-proxy.js                       optional standalone HTTPS bridge (:4001) for exotic setups
 tools/mock-vllm.js                fake vLLM for GPU-less dev
 manifest.xml                      Office add-in manifest (validated)
 ```
@@ -172,7 +180,7 @@ manifest.xml                      Office add-in manifest (validated)
 ## 🕊️ Privacy statement
 
 ```
-your data  ->  your pane  ->  your proxy  ->  your GPU  ->  back
+your data  ->  your pane  ->  your bridge  ->  your GPU  ->  back
 ```
 
 No telemetry. No accounts. No "your files help improve our services" fine print.

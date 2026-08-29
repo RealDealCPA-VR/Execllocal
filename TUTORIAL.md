@@ -45,6 +45,7 @@ npm start
 ```
 
 Windows shortcut: double-click `start-excellocal.cmd` (installs + starts).
+- **Keep this terminal open** — it serves the add-in pane while you use ExcelLocal. Done? `npm run stop`, then close it.
 
 The dev server has **built-in same-origin bridges**, so the pane needs zero config:
 `/vllm` forwards to vLLM on :8000, `/ollama` to :11434, `/lmstudio` to :1234.
