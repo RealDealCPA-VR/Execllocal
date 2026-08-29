@@ -55,7 +55,7 @@ Open the project folder in a terminal:
 npm start
 ```
 
-Windows shortcut: double-click `start-excellocal.cmd` (installs + starts).
+Windows shortcut: double-click `start-excellocal.cmd` (installs + starts). Prefer zero terminals day-to-day? After this first run, `npm run service:install` makes it fully automatic.
 - **Keep this terminal open** — it serves the add-in pane while you use ExcelLocal. Done? `npm run stop`, then close it.
 
 The dev server has **built-in same-origin bridges**, so the pane needs zero config:
@@ -96,7 +96,7 @@ Click the **gear**:
 
 | Field | What to put |
 |---|---|
-| **LLM server** | Pick vLLM (localhost:8000), Ollama (11434) or LM Studio (1234) from the dropdown — zero typing. Models on another machine (tailnet/LAN)? Choose *Custom URL...* and type its **http://** address — it is bridged automatically. Public addresses are refused by design. |
+| **LLM server** | Pick vLLM (localhost:8000), Ollama (11434) or LM Studio (1234) from the dropdown — zero typing. Models on another machine (tailnet/LAN)? Choose *Custom URL...* and type its **http://** address (with or without `/v1`) — it is bridged automatically. Public IP addresses are refused by design; tailnet names and private IPs are fine. |
 | **Model** | auto-populated from your server's `/v1/models` — pick one |
 | **API key** | leave empty for local servers |
 | **Temp** | 0.2–0.7 for spreadsheet work (lower = more precise tool calls) |
@@ -139,7 +139,8 @@ the tool chips let you audit every step.
 | Red banner *"Cannot reach LLM server..."* | Is the LLM server up (`curl http://localhost:8000/v1/models`)? Right server type picked in Settings? |
 | Chat works but model never *does* anything | vLLM missing `--enable-auto-tool-choice --tool-call-parser <family>` (Part 2) |
 | Model makes tool calls that error instantly | Wrong parser for the model family; or the model is too small for tool use |
-| `npm start` says port 3000 is busy | Close whatever owns the port (a reboot works) or run `npm run stop` first |
+| Excel shows **Add-in error** when opening | The pane server isn't running. Quick fix: `npm start`. Permanent fix: `npm run service:install` — a hidden background task serves the pane at every login, no terminal ever |
+| The pane asks to *debug the webview* | You launched with debugging on — use `npm start` (dialog-free) instead of `npm run start:debug` || `npm start` says port 3000 is busy | Close whatever owns the port (a reboot works) or run `npm run stop` first |
 | A dialog asks to *debug the webview* / attach VS Code | You launched with debugging on. Use `npm start` (dialog-free) instead of `npm run start:debug`; if it keeps appearing: `reg add HKCUSOFTWAREMicrosoftOffice.0WEFDeveloper<add-in-id> /v UseDirectDebugger /t REG_DWORD /d 0 /f` |
 | Pane is blank / doesn't load | `npm run stop`, then `npm start` again |
 | *"Reached the tool-step limit"* | Big task — reply "continue" and it picks up where it stopped |

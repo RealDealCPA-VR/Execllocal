@@ -123,7 +123,18 @@ npm start     # builds, serves the pane, bridges /vllm /ollama /lmstudio, sidelo
 
 ### 🌐 Models on another machine (Tailscale/LAN, plain HTTP)
 
-Serving vLLM on your tailnet or LAN at, say, `http://my-gpu-box:8000`? Choose **Custom URL** in Settings and type exactly that. The dev server bridges it automatically (same-origin), restricted to private ranges: localhost, 10.x, 172.16-31.x, 192.168.x, 100.64.0.0/10 (Tailscale), `*.ts.net`, `*.local`. Public addresses are refused — the bridge is your private tunnel, not an open proxy.
+Serving vLLM on your tailnet or LAN at, say, `http://my-gpu-box:8000`? Choose **Custom URL** in Settings and type exactly that. With or without the trailing `/v1` — both work. The dev server bridges it automatically (same-origin), restricted to private ranges: localhost, 10.x, 172.16-31.x, 192.168.x, 100.64.0.0/10 (Tailscale), `*.ts.net`, `*.local`. Public addresses are refused — the bridge is your private tunnel, not an open proxy.
+
+## 🤫 Daily use with zero terminals (background service)
+
+Don't want a terminal visible at all? Install the pane server as a hidden background task
+(starts at every login, serves the pane + bridges on `127.0.0.1:3000`):
+
+```bash
+npm run service:install     # one time; also unloads the dev server if running
+```
+
+After that, Excel + ExcelLocal work with nothing visible. Updates: `git pull`, `npm run build`, reload the pane. Undo: `npm run service:uninstall`.
 
 ## 🖥️ Headless mode — run the server on the GPU box instead
 
