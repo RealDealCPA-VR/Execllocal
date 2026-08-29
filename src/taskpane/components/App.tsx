@@ -137,7 +137,9 @@ export default function App(): React.ReactElement {
         headers: { ...authHeaders(s), ...(bridge ? { "X-Llm-Target": bridge } : {}) },
       });
       if (!res.ok) {
-        throw new Error("HTTP " + res.status);
+        // include the response body: bridge refusals and server errors explain themselves
+        const detail = await res.text().catch(() => "");
+        throw new Error("HTTP " + res.status + (detail ? " - " + detail.slice(0, 200) : ""));
       }
       const data = await res.json();
       const ids: string[] = (data.data ?? []).map((m: { id: string }) => m.id);

@@ -14,6 +14,7 @@
  * configured upstream or to a private-network target from the pane.
  */
 const http = require("http");
+const net = require("net");
 const https = require("https");
 
 function octets(host) {
@@ -21,9 +22,13 @@ function octets(host) {
 }
 
 /**
- * Guardrail for dynamic bridging: only loopback, RFC1918 LAN ranges,
- * the Tailscale CGNAT range (100.64.0.0/10), *.ts.net and *.local are allowed.
- * Public hosts are rejected so the dev server never becomes an open proxy.
+ * Guardrail for dynamic bridging (personal-use semantics):
+ *  - any HOSTNAME is allowed (your machine resolves it: Tailscale MagicDNS short names,
+ *    *.ts.net, *.local, LAN names, FQDNs)
+ *  - IP literals must be loopback or private ranges (RFC1918, Tailscale CGNAT 100.64/10,
+ *    IPv6 ULA fc00::/7) - direct public IP literals are refused
+ * The dev server only listens on localhost, so this bridge is reachable from your machine
+ * alone; the guard exists to keep it from being usable as a general internet proxy.
  */
 function isAllowedBridgeTarget(target) {
   let u;
@@ -36,21 +41,24 @@ function isAllowedBridgeTarget(target) {
     return false;
   }
   const host = u.hostname.toLowerCase();
-  if (host === "localhost" || host.endsWith(".localhost") || host === "::1" || host === "[::1]") {
+  if (host === "localhost" || host.endsWith(".localhost") || host === "::1") {
     return true;
   }
-  if (host.endsWith(".ts.net") || host.endsWith(".local")) {
-    return true;
+  const ipVersion = net.isIP(host);
+  if (ipVersion === 0) {
+    return true; // hostname: resolved by this machine's own DNS (MagicDNS, LAN, FQDN)
   }
-  if (!/^[0-9.]+$/.test(host)) {
-    return false; // non-literal hostnames must be an allowlisted suffix
+  if (ipVersion === 6) {
+    const lower = host.replace(/^.*:/, "");
+    return host === "::1" || /^fc[0-9a-f]{2}:/i.test(host + ":") || host.startsWith("fc") || host.startsWith("fd");
   }
+  // IPv4 literal: loopback + private ranges only
   const parts = host.split(".").map((p) => parseInt(p, 10));
   if (parts.length !== 4 || parts.some((n) => isNaN(n) || n < 0 || n > 255)) {
     return false;
   }
   const [a, b] = parts;
-  if (a === 127 || a === 10 || a === 192 && b === 168) {
+  if (a === 127 || a === 10 || (a === 192 && b === 168)) {
     return true;
   }
   if (a === 172 && b >= 16 && b <= 31) {
@@ -61,7 +69,6 @@ function isAllowedBridgeTarget(target) {
   }
   return false;
 }
-
 function joinUpstreamPath(upstream, targetPath) {
   if (upstream.pathname === "/") {
     return targetPath;
@@ -104,7 +111,7 @@ function createForwardHandler(vllmUrl, opts) {
           res.end(
             JSON.stringify({
               error:
-                "Bridge refused: target is not a private/tailnet address. Allowed: localhost, 127.0.0.0/8, 10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16, 100.64.0.0/10 (Tailscale), *.ts.net, *.local.",
+                "Bridge refused: public IP literals are not allowed. Use a hostname (Tailscale MagicDNS name, *.ts.net, LAN name) or a private-range IP (localhost, 10.x, 172.16-31.x, 192.168.x, 100.64-127.x).",
             })
           );
           return;

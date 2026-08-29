@@ -125,6 +125,24 @@ npm start     # builds, serves the pane, bridges /vllm /ollama /lmstudio, sidelo
 
 Serving vLLM on your tailnet or LAN at, say, `http://my-gpu-box:8000`? Choose **Custom URL** in Settings and type exactly that. The dev server bridges it automatically (same-origin), restricted to private ranges: localhost, 10.x, 172.16-31.x, 192.168.x, 100.64.0.0/10 (Tailscale), `*.ts.net`, `*.local`. Public addresses are refused — the bridge is your private tunnel, not an open proxy.
 
+## 🖥️ Headless mode — run the server on the GPU box instead
+
+Tired of the terminal on your Excel machine? Serve everything from the remote box:
+
+```bash
+# on the GPU box (one time): clone, npm ci, npm run build
+node server/serve.js                     # serves dist/ + bridges on :3000
+tailscale serve --bg --https=443 http://127.0.0.1:3000   # trusted HTTPS via your tailnet
+```
+
+# on Windows (one time): generate + register the remote manifest
+npm run manifest:remote -- https://your-box.your-tailnet.ts.net
+npm run sideload:remote
+
+Excel now loads the pane straight from your GPU box over your tailnet. No webpack,
+no local terminal, ever. The pane's Server type stays **vLLM (localhost:8000)** — the
+bridge on the GPU box forwards to its own local vLLM automatically.
+
 **No GPU at hand?** `node tools/mock-vllm.js` fakes a streaming LLM on :8000 so you can
 develop the UI on a toaster. `MOCK_AGENT=1` makes it simulate a two-turn tool conversation.
 

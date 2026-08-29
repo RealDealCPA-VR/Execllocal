@@ -163,7 +163,31 @@ npm run build           # production webpack build
 - The agent loop (`src/taskpane/llm/agent.ts`) is pure TypeScript — extend `tools.ts` +
   `excelTools.ts` to add new superpowers.
 
-## Part 10 — The mental model (remember just this)
+## Part 10 — Headless mode (no webpack on your Excel machine)
+
+Everything you ran in Part 3 can live on the GPU box instead. On the box:
+
+```bash
+git clone https://github.com/RealDealCPA-VR/Execllocal.git && cd Execllocal
+npm ci && npm run build
+node server/serve.js
+tailscale serve --bg --https=443 http://127.0.0.1:3000
+```
+
+On Windows (one time):
+
+```bash
+npm run manifest:remote -- https://your-box.your-tailnet.ts.net
+npm run sideload:remote
+```
+
+- The pane is now served by the GPU box over your tailnet — no local terminal, no Node needed on Windows.
+- In the pane keep **Server type = vLLM (localhost:8000)**: the remote bridge forwards to the box's own vLLM.
+- Update the pane later: `git pull && npm run build` on the box, then reload the pane in Excel.
+- Removing it: unregister via Excel → Insert → My Add-ins, or delete the
+  `HKCU\SOFTWARE\Microsoft\Office\16.0\WEF\Developer\<add-in-id>` registry key.
+
+## Part 11 — The mental model (remember just this)
 
 > **The model can see a snapshot of your workbook and can call tools that read and write it.
 > Reads happen freely; writes ask first; every action is displayed. Your data never leaves

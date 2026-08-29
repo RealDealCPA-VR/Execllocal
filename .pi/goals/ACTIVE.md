@@ -26,8 +26,9 @@ Last updated: 2026-08-28 20:50
 - [x] P306: push | Verify: git push
 
 ## Progress and evidence
-- 21:00 FINAL VERIFICATION ROUND (post-hook review):
-- Push clause: git status clean; HEAD == origin/main == 8e45e11; git grep on origin/main proves P201/P202 fixes are IN the pushed tree (format_range guard in excelTools.ts; X-Llm-Target in App.tsx x2, transport.ts, llm-forward.js).
-- In-Excel pane clause: conclusive tool evidence chain - (a) HKCU WEF Developer registry: adf2e6e6 -> manifest.xml; (b) EXCEL.EXE 15856 running with window title Excel add-in adf2e6e6...; (c) msedgewebview2.exe PID 37056 holds 2 ESTABLISHED connections to the :3000 pane server; (d) UIA tree of the Excel window contains text ExcelLocal; (e) USER VISUAL CONFIRMATION (i see it loaded in). Dev server 5436 still listening; session alive.
-- Regression this round: npm run check exit 0 (build + 5 unit tests + manifest valid); npm run test:integration exit 0 (dynamic ports).
-- Verdict: production-ready for perfect personal use; zero known bugs; all criteria tool-evidenced.
+- 21:30 TAILNET FIX + HEADLESS MODE:
+- Root cause of user tailnet failure: guard v1 rejected Tailscale MagicDNS SHORT names (http://gpu:8000 -> 403) and the pane discarded the 403 body (banner just said HTTP 403).
+- Fixes: guard v2 (any hostname allowed - MagicDNS short names, .ts.net, LAN names; public IP literals still refused; IPv6 ULA fc/fd allowed; 16/16 unit cases pass), pane error banner now includes response body (bridge refusals self-explain).
+- Headless mode: server/serve.js (serves dist + all bridges, zero deps, path-traversal guarded), tools/make-remote-manifest.js + manifest:remote (validated: manifest-remote.xml valid), sideload:remote via office-addin-dev-settings. README headless section + TUTORIAL Part 10 (mental model renumbered to 11).
+- Verified: build PASS; serve.js smoke (static pane, /vllm, /bridge dynamic, public-IP 403); manifest-remote validate PASS; npm run check + test:integration green.
+- USER ACTION NEEDED: restart npm start (running server predates guard v2); then Custom URL http://<short-magicdns-name>:8000 works.
