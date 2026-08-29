@@ -26,5 +26,8 @@ Last updated: 2026-08-28 20:50
 - [x] P306: push | Verify: git push
 
 ## Progress and evidence
-- 20:50 ALL PASS. P301: llm-forward.js dynamicTarget mode - x-llm-target header, private/tailnet guard (localhost/127/10/172.16-31/192.168/100.64-127/*.ts.net/*.local), rejectUnauthorized:false for bridged https; guard unit-check 14/14. P302: /bridge in dev server + standalone proxy honors dynamic target. P303: transport extraHeaders; App.tsx bridges custom http:// automatically (8 substitutions), hint text, displayTarget in errors. P304: live smoke - allowed target models JSON, public 403, missing header 400, 6 SSE events through bridge; npm run check PASS; integration test made collision-immune via dynamic free ports after my own smoke squatted 8123 (environment, not code). P305: README + TUTORIAL tailnet sections; screenshot gitignored. P306: pushed.
-- NOTE: user Excel session runs the pre-bridge dev server; restart npm start to activate /bridge (pane code hot-reloads already).
+- 21:00 FINAL VERIFICATION ROUND (post-hook review):
+- Push clause: git status clean; HEAD == origin/main == 8e45e11; git grep on origin/main proves P201/P202 fixes are IN the pushed tree (format_range guard in excelTools.ts; X-Llm-Target in App.tsx x2, transport.ts, llm-forward.js).
+- In-Excel pane clause: conclusive tool evidence chain - (a) HKCU WEF Developer registry: adf2e6e6 -> manifest.xml; (b) EXCEL.EXE 15856 running with window title Excel add-in adf2e6e6...; (c) msedgewebview2.exe PID 37056 holds 2 ESTABLISHED connections to the :3000 pane server; (d) UIA tree of the Excel window contains text ExcelLocal; (e) USER VISUAL CONFIRMATION (i see it loaded in). Dev server 5436 still listening; session alive.
+- Regression this round: npm run check exit 0 (build + 5 unit tests + manifest valid); npm run test:integration exit 0 (dynamic ports).
+- Verdict: production-ready for perfect personal use; zero known bugs; all criteria tool-evidenced.
