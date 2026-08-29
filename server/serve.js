@@ -21,8 +21,10 @@
  *   npm run sideload:remote
  */
 const http = require("http");
+const https = require("https");
 const fs = require("fs");
 const path = require("path");
+const os = require("os");
 const { createForwardHandler } = require("../llm-forward");
 
 const PORT = Number(process.env.SERVE_PORT || 3000);
@@ -74,7 +76,7 @@ const bridges = {
   "/bridge": createForwardHandler(null, { stripPrefix: false, dynamicTarget: true }),
 };
 
-const server = http.createServer((req, res) => {
+function requestHandler(req, res) {
   const url = req.url || "/";
   for (const prefix of Object.keys(bridges)) {
     if (url === prefix || url.startsWith(prefix + "/")) {
@@ -83,11 +85,21 @@ const server = http.createServer((req, res) => {
     }
   }
   serveStatic(req, res);
-});
+}
 
+// Office requires the pane over HTTPS. Use the Office dev certificates when they
+// exist (same ones webpack uses - already trusted by Excel). Set SERVE_TLS=0 to
+// serve plain HTTP, e.g. when fronting with `tailscale serve` on the GPU box.
+const certDir = path.join(os.homedir(), ".office-addin-dev-certs");
+const crtPath = path.join(certDir, "localhost.crt");
+const keyPath = path.join(certDir, "localhost.key");
+const useTls = process.env.SERVE_TLS !== "0" && fs.existsSync(crtPath) && fs.existsSync(keyPath);
+const server = useTls
+  ? https.createServer({ cert: fs.readFileSync(crtPath), key: fs.readFileSync(keyPath) }, requestHandler)
+  : http.createServer(requestHandler);
 server.listen(PORT, HOST, () => {
   console.log("ExcelLocal production server:");
-  console.log("  pane:    http://" + HOST + ":" + PORT + "/taskpane.html  (front with tailscale serve / Caddy for HTTPS)");
+  console.log("  pane:    " + (useTls ? "https" : "http") + "://" + HOST + ":" + PORT + "/taskpane.html" + (useTls ? "  (Office dev certs)" : "  (front with tailscale serve / Caddy for HTTPS)"));
   console.log("  bridges: /vllm /ollama /lmstudio /bridge");
   console.log("  static:  " + DIST);
 });

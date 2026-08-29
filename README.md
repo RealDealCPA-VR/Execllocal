@@ -143,6 +143,8 @@ Tired of the terminal on your Excel machine? Serve everything from the remote bo
 ```bash
 # on the GPU box (one time): clone, npm ci, npm run build
 node server/serve.js                     # serves dist/ + bridges on :3000
+    # auto-HTTPS: uses your Office dev certs when present (needed by Excel);
+    # SERVE_TLS=0 forces plain HTTP when fronting with tailscale serve
 tailscale serve --bg --https=443 http://127.0.0.1:3000   # trusted HTTPS via your tailnet
 ```
 

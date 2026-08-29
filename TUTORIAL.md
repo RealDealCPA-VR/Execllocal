@@ -172,6 +172,7 @@ Everything you ran in Part 3 can live on the GPU box instead. On the box:
 git clone https://github.com/RealDealCPA-VR/Execllocal.git && cd Execllocal
 npm ci && npm run build
 node server/serve.js
+   (auto-HTTPS locally via Office dev certs; on the GPU box it stays HTTP for tailscale serve)
 tailscale serve --bg --https=443 http://127.0.0.1:3000
 ```
 
