@@ -115,6 +115,8 @@ module.exports = async (env, options) => {
         devServer.app.use("/vllm", createForwardHandler(process.env.VLLM_URL || "http://localhost:8000", { stripPrefix: false }));
         devServer.app.use("/ollama", createForwardHandler(process.env.OLLAMA_URL || "http://localhost:11434", { stripPrefix: false }));
         devServer.app.use("/lmstudio", createForwardHandler(process.env.LMSTUDIO_URL || "http://localhost:1234", { stripPrefix: false }));
+        // Dynamic bridge: pane sends x-llm-target (private/tailnet HTTP endpoints).
+        devServer.app.use("/bridge", createForwardHandler(null, { stripPrefix: false, dynamicTarget: true }));
         return middlewares;
       },
     },

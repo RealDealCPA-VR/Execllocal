@@ -1,33 +1,30 @@
 # Active Goal
 
 Status: COMPLETE
-Goal: Make ExcelLocal plug-and-play: user only picks server type (vLLM/Ollama/LM Studio/Custom) + model in the app; same-origin LLM bridges inside `npm start` (no second terminal); Windows launcher; docs updated; push.
-Started: 2026-08-28 18:55
-Last updated: 2026-08-28 19:20
+Goal: Support models over a tailnet via HTTP (user types the endpoint in the app, bridged safely); push all work to GitHub.
+Started: 2026-08-28 20:20
+Last updated: 2026-08-28 20:50
 
 ## Scope and acceptance criteria
-- [x] A1: llm-forward.js shared handler; llm-proxy.js refactored onto it (standalone behavior unchanged)
-- [x] A2: webpack dev-server middleware: /vllm -> VLLM_URL(:8000), /ollama -> :11434, /lmstudio -> :1234 (same-origin, no CORS)
-- [x] A3: App.tsx: server-type picker + custom URL; legacy baseUrl migration; all call sites use resolveBaseUrl
-- [x] A4: regression green: npm run check + integration test (standalone proxy scenario still passes)
-- [x] A5: dev-server middleware smoke: real curl https://localhost:3000/vllm/v1/models returns models JSON
-- [x] A6: start-excellocal.cmd launcher (install-if-needed + start)
-- [x] A7: README + TUTORIAL rewritten to one-terminal flow; push to origin
+- [x] A1: /bridge dynamic forwarding in dev server + standalone proxy: pane sends x-llm-target header; only private/tailnet hosts allowed (SSRF guard); https targets tolerate private certs
+- [x] A2: App: custom http:// URLs are bridged automatically (no more refusal), settings hint shown; error messages show the real target
+- [x] A3: Verified live: /bridge with allowed target returns models JSON; disallowed public target rejected 403; full regression green
+- [x] A4: Docs: README + TUTORIAL tailnet/LAN section
+- [x] A5: Pushed to GitHub (incl. previous uncommitted plug-and-play + sideload-evidence work); screenshot excluded from git
 
 ## Constraints and decisions
-- Same-origin bridge removes CORS entirely for the default flows; standalone HTTPS proxy stays for custom/advanced setups.
-- Express mount strips the prefix (use stripPrefix:false for middleware); standalone proxy keeps manual /vllm strip.
-- Known hazards: no backslash literals in patches (char codes only); verify every write.
+- Excel sideload already user-confirmed visually ("i see it loaded in"); keep Excel + dev server RUNNING (user is using it) - tests use dedicated ports (8123/4010) so no conflict.
+- Bridge guardrail: allow localhost/127/10/172.16-31/192.168/100.64-127 (tailscale CGNAT)/.ts.net/.local only. Public hosts rejected 403.
+- Bridge https targets use rejectUnauthorized:false (personal private certs).
 
 ## Todo
-- [x] P101: llm-forward.js + llm-proxy refactor | Verify: node --check both
-- [x] P102: webpack middleware | Verify: build + dev-server curl smoke
-- [x] P103: App.tsx settings rework | Verify: npm run build +
- tests + integration
-- [x] P104: start-excellocal.cmd launcher | Verify: exists, content sane
-- [x] P105: docs rewrite (README quickstart, TUTORIAL parts 3/5/8) | Verify: manual read
-- [x] P106: final regression + push | Verify: npm run check + test:integration + git push
+- [x] P301: llm-forward.js dynamic target mode | Verify: node --check
+- [x] P302: webpack + standalone proxy /bridge routes | Verify: build
+- [x] P303: transport.ts extraHeaders + App.tsx bridge logic | Verify: npm run build
+- [x] P304: live guard tests (allowed + 403) + regression | Verify: curl outputs + npm run check
+- [x] P305: docs | Verify: read
+- [x] P306: push | Verify: git push
 
 ## Progress and evidence
-- 19:20 ALL PASS. P101: llm-forward.js shared handler; llm-proxy.js refactored (node --check OK). P102: webpack setupMiddlewares - same-origin bridges /vllm,/ollama,/lmstudio; live smoke via real dev server: models JSON + 6 SSE data events + clean 502 JSON for down upstream + taskpane.html served. P103: App.tsx 9 substitutions - ServerType picker (vLLM/Ollama/LM Studio/Custom), resolveBaseUrl, legacy baseUrl migration, all call sites. P104: start-excellocal.cmd. P105: README quickstart one-terminal + TUTORIAL parts 3/5/8 (line-index patches to survive multibyte). P106: npm run check green; integration test collision-proofed (dedicated ports 8123/4010 after a stale plain mock on :8000 caused a false failure) - PASS; LICENSE (MIT) + GitHub Actions CI added for production readiness. Pushed.
-- FINDINGS: integration false failure root-caused to environment (stale server), not code; test now immune.
+- 20:50 ALL PASS. P301: llm-forward.js dynamicTarget mode - x-llm-target header, private/tailnet guard (localhost/127/10/172.16-31/192.168/100.64-127/*.ts.net/*.local), rejectUnauthorized:false for bridged https; guard unit-check 14/14. P302: /bridge in dev server + standalone proxy honors dynamic target. P303: transport extraHeaders; App.tsx bridges custom http:// automatically (8 substitutions), hint text, displayTarget in errors. P304: live smoke - allowed target models JSON, public 403, missing header 400, 6 SSE events through bridge; npm run check PASS; integration test made collision-immune via dynamic free ports after my own smoke squatted 8123 (environment, not code). P305: README + TUTORIAL tailnet sections; screenshot gitignored. P306: pushed.
+- NOTE: user Excel session runs the pre-bridge dev server; restart npm start to activate /bridge (pane code hot-reloads already).

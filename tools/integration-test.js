@@ -9,7 +9,21 @@
 process.env.NODE_TLS_REJECT_UNAUTHORIZED = "0"; // self-signed Office dev certs
 const { spawn } = require("child_process");
 const assert = require("assert");
-// NOTE: uses dedicated ports (mock :8123, proxy :4010) so stray dev servers cannot collide.
+const net = require("net");
+
+// Pick free ports dynamically so stray servers can never collide with the test.
+function getFreePort() {
+  return new Promise((resolve, reject) => {
+    const srv = net.createServer();
+    srv.unref();
+    srv.on("error", reject);
+    srv.listen(0, "127.0.0.1", () => {
+      const port = srv.address().port;
+      srv.close(() => resolve(port));
+    });
+  });
+}
+// NOTE: mock and proxy bind to dynamically chosen free ports.
 const { runAgent } = require("./build-test/src/taskpane/llm/agent");
 const { HttpTransport } = require("./build-test/src/taskpane/llm/transport");
 
@@ -23,8 +37,10 @@ function start(cmd, args, env) {
 }
 
 (async () => {
-  const mock = start("node", ["tools/mock-vllm.js"], { MOCK_AGENT: "1", MOCK_PORT: "8123" });
-  const proxy = start("node", ["llm-proxy.js"], { VLLM_URL: "http://localhost:8123", PROXY_PORT: "4010" });
+  const mockPort = await getFreePort();
+  const proxyPort = await getFreePort();
+  const mock = start("node", ["tools/mock-vllm.js"], { MOCK_AGENT: "1", MOCK_PORT: String(mockPort) });
+  const proxy = start("node", ["llm-proxy.js"], { VLLM_URL: "http://localhost:" + mockPort, PROXY_PORT: String(proxyPort) });
   await wait(2500);
 
   try {
@@ -32,7 +48,7 @@ function start(cmd, args, env) {
     const transport = new HttpTransport();
     const result = await runAgent({
       transport,
-      transportOptions: { baseUrl: "https://localhost:4010/vllm", model: "mock-model", temperature: 0 },
+      transportOptions: { baseUrl: "https://localhost:" + proxyPort + "/vllm", model: "mock-model", temperature: 0 },
       systemPrompt: "integration test",
       history: [],
       userMessage: "please inspect A1:B2",

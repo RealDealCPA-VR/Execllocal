@@ -96,6 +96,13 @@ Windows shortcut: double-click `start-excellocal.cmd` (installs + starts). The d
 includes same-origin LLM bridges, so the pane talks to your server with zero configuration:
 `/vllm` (localhost:8000), `/ollama` (11434), `/lmstudio` (1234) — pick yours in the pane's
 Settings. Custom HTTPS-reachable endpoint? Choose Custom URL (or the optional `npm run proxy`).
+
+### 🌐 Models on another machine (Tailscale/LAN, plain HTTP)
+
+Serving vLLM on your tailnet or LAN at, say, `http://my-gpu-box:8000`? Choose **Custom URL**
+in Settings and type exactly that. The dev server bridges it automatically (same-origin),
+restricted to private ranges: localhost, 10.x, 172.16-31.x, 192.168.x, 100.64.0.0/10 (Tailscale),
+`*.ts.net`, `*.local`. Public addresses are refused — the bridge is your private tunnel, not an open proxy.
 **3. Click the button:**
 
 Excel opens → **Home** ribbon → **ExcelLocal** → pick your model in Settings → go wild.

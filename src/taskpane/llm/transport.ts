@@ -27,6 +27,8 @@ export interface WireMessage {
 
 export interface TransportOptions {
   baseUrl: string;
+  /** Extra headers (e.g. X-Llm-Target for the dynamic bridge). */
+  extraHeaders?: Record<string, string>;
   apiKey?: string;
   model: string;
   temperature: number;
@@ -40,7 +42,10 @@ export interface Transport {
 
 export class HttpTransport implements Transport {
   async *stream(messages: WireMessage[], opts: TransportOptions): AsyncIterable<StreamEvent> {
-    const headers: Record<string, string> = { "Content-Type": "application/json" };
+    const headers: Record<string, string> = {
+      "Content-Type": "application/json",
+      ...(opts.extraHeaders ?? {}),
+    };
     if (opts.apiKey) {
       headers.Authorization = "Bearer " + opts.apiKey;
     }

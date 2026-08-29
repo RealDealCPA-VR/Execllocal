@@ -278,6 +278,12 @@ async function formatRange(ctx: Excel.RequestContext, args: Record<string, unkno
   if (fillColor) { range.format.fill.color = fillColor; applied.fill_color = fillColor; }
   const align = alignment(args.horizontal_alignment);
   if (align) { range.format.horizontalAlignment = align as Excel.HorizontalAlignment; applied.horizontal_alignment = align; }
+  if (dims.rows * dims.cols > MAX_CELLS && args.number_format !== undefined) {
+    return {
+      result: { error: "Range is " + dims.rows + "x" + dims.cols + " cells; number_format is applied per cell and is capped at " + MAX_CELLS + " cells. Narrow the range or apply the format manually." },
+      summary: "number_format refused: range too large"
+    };
+  }
   if (typeof args.number_format === "string" && args.number_format.trim()) {
     const fmt = args.number_format.trim();
     const grid: string[][] = [];

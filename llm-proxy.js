@@ -43,7 +43,7 @@ async function getTlsOptions() {
 async function main() {
   const tlsOptions = await getTlsOptions();
 
-  const forward = createForwardHandler(VLLM_URL, { stripPrefix: true });
+  const forward = createForwardHandler(VLLM_URL, { stripPrefix: true, dynamicTarget: true });
 
   const server = https.createServer(tlsOptions, (clientReq, clientRes) => {
     forward(clientReq, clientRes);

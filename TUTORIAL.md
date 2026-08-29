@@ -84,7 +84,7 @@ Click the **gear**:
 
 | Field | What to put |
 |---|---|
-| **LLM server** | Pick vLLM (localhost:8000), Ollama (11434) or LM Studio (1234) from the dropdown — zero typing. Anything else: *Custom URL...* (must be HTTPS-reachable, e.g. via the optional `npm run proxy`). |
+| **LLM server** | Pick vLLM (localhost:8000), Ollama (11434) or LM Studio (1234) from the dropdown — zero typing. Models on another machine (tailnet/LAN)? Choose *Custom URL...* and type its **http://** address — it is bridged automatically. Public addresses are refused by design. |
 | **Model** | auto-populated from your server's `/v1/models` — pick one |
 | **API key** | leave empty for local servers |
 | **Temp** | 0.2–0.7 for spreadsheet work (lower = more precise tool calls) |

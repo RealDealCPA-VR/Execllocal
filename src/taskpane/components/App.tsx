@@ -57,8 +57,24 @@ function resolveBaseUrl(s: Settings): string {
     case "lmstudio":
       return "/lmstudio";
     default:
-      return s.customUrl;
+      // HTTP custom endpoints (e.g. a vLLM box on your tailnet) cannot be
+      // called directly from the HTTPS pane; route them through the bridge.
+      const trimmed = s.customUrl.trim().replace(/\/+$/, "");
+      return trimmed.toLowerCase().startsWith("http://") ? "/bridge" : trimmed;
   }
+}
+
+/** The upstream target for the dynamic bridge, or null when not bridging. */
+function httpBridgeTarget(s: Settings): string | null {
+  if (s.serverType !== "custom") {
+    return null;
+  }
+  const trimmed = s.customUrl.trim();
+  return trimmed.toLowerCase().startsWith("http://") ? trimmed : null;
+}
+
+function displayTarget(s: Settings): string {
+  return httpBridgeTarget(s) ?? resolveBaseUrl(s);
 }
 
 function loadSettings(): Settings {
@@ -114,8 +130,12 @@ export default function App(): React.ReactElement {
 
   const refreshModels = React.useCallback(async (s: Settings) => {
     setConnectionError(null);
+
     try {
-      const res = await fetch(resolveBaseUrl(s) + "/v1/models", { headers: authHeaders(s) });
+      const bridge = httpBridgeTarget(s);
+      const res = await fetch(resolveBaseUrl(s) + "/v1/models", {
+        headers: { ...authHeaders(s), ...(bridge ? { "X-Llm-Target": bridge } : {}) },
+      });
       if (!res.ok) {
         throw new Error("HTTP " + res.status);
       }
@@ -128,7 +148,7 @@ export default function App(): React.ReactElement {
     } catch (e) {
       setModels([]);
       setConnectionError(
-        "Cannot reach LLM server at " + resolveBaseUrl(s) + " (" + (e as Error).message + "). " +
+        "Cannot reach LLM server at " + displayTarget(s) + " (" + (e as Error).message + "). " +
           "Is the LLM server running? vLLM :8000, Ollama :11434, LM Studio :1234."
       );
     }
@@ -228,6 +248,7 @@ export default function App(): React.ReactElement {
         transport: transportRef.current!,
         transportOptions: {
           baseUrl: resolveBaseUrl(settings),
+          extraHeaders: httpBridgeTarget(settings) ? { "X-Llm-Target": httpBridgeTarget(settings)! } : undefined,
           apiKey: settings.apiKey || undefined,
           model: settings.model,
           temperature: settings.temperature,
@@ -338,7 +359,7 @@ export default function App(): React.ReactElement {
           </label>
           {settings.serverType === "custom" && (
             <label className="field">
-              <span>Endpoint URL (must be HTTPS-reachable)</span>
+              <span>Endpoint URL — http:// addresses are bridged via the dev server (localhost / tailnet / LAN only)</span>
               <input
                 type="text"
                 value={settings.customUrl}
