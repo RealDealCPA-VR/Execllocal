@@ -25,6 +25,18 @@ export interface WireMessage {
   tool_call_id?: string;
 }
 
+/**
+ * Accepts OpenAI-style base URLs with or without a trailing /v1 and slashes,
+ * since the client always appends /v1/... itself.
+ */
+export function normalizeOpenAiBase(url: string): string {
+  let u = url.trim().replace(/\/+$/,"");
+  if (u.toLowerCase().endsWith("/v1")) {
+    u = u.slice(0, -3);
+  }
+  return u;
+}
+
 export interface TransportOptions {
   baseUrl: string;
   /** Extra headers (e.g. X-Llm-Target for the dynamic bridge). */

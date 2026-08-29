@@ -181,6 +181,7 @@ async function testAbort(): Promise<void> {
   await testDeclinedWrite();
   await testMaxStepsGuard();
 
+  testNormalizeBase();
   testSseExtraction();
   await testAbort();
   console.log("ALL AGENT TESTS PASSED");
@@ -188,6 +189,19 @@ async function testAbort(): Promise<void> {
   console.error("TEST FAILURE:", e);
   process.exit(1);
 });
+
+// ---- OpenAI base URL normalization unit tests ----
+function testNormalizeBase(): void {
+  const { normalizeOpenAiBase } = require("../src/taskpane/llm/transport");
+  assert.strictEqual(normalizeOpenAiBase("http://100.66.161.52:4000/v1"), "http://100.66.161.52:4000");
+  assert.strictEqual(normalizeOpenAiBase("http://100.66.161.52:4000/v1/"), "http://100.66.161.52:4000");
+  assert.strictEqual(normalizeOpenAiBase("http://100.66.161.52:4000/"), "http://100.66.161.52:4000");
+  assert.strictEqual(normalizeOpenAiBase("http://100.66.161.52:4000"), "http://100.66.161.52:4000");
+  assert.strictEqual(normalizeOpenAiBase("http://box:4000/API/V1"), "http://box:4000/API");
+  assert.strictEqual(normalizeOpenAiBase("http://box:4000/api"), "http://box:4000/api");
+  assert.strictEqual(normalizeOpenAiBase("  https://gpu.tail.ts.net/v1  "), "https://gpu.tail.ts.net");
+  console.log("PASS testNormalizeBase");
+}
 
 // ---- SSE extraction unit tests (Pass 2) ----
 function testSseExtraction(): void {

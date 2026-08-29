@@ -1,6 +1,6 @@
 import * as React from "react";
 import { SettingsRegular, SendRegular, StopRegular, ArrowClockwiseRegular } from "@fluentui/react-icons";
-import { HttpTransport } from "../llm/transport";
+import { HttpTransport, normalizeOpenAiBase } from "../llm/transport";
 import { runAgent, ToolCall } from "../llm/agent";
 import { TOOL_SCHEMAS } from "../llm/tools";
 import { excelExecutor } from "../llm/excelTools";
@@ -59,8 +59,8 @@ function resolveBaseUrl(s: Settings): string {
     default:
       // HTTP custom endpoints (e.g. a vLLM box on your tailnet) cannot be
       // called directly from the HTTPS pane; route them through the bridge.
-      const trimmed = s.customUrl.trim().replace(/\/+$/, "");
-      return trimmed.toLowerCase().startsWith("http://") ? "/bridge" : trimmed;
+      const base = normalizeOpenAiBase(s.customUrl);
+      return base.toLowerCase().startsWith("http://") ? "/bridge" : base;
   }
 }
 
@@ -69,8 +69,8 @@ function httpBridgeTarget(s: Settings): string | null {
   if (s.serverType !== "custom") {
     return null;
   }
-  const trimmed = s.customUrl.trim();
-  return trimmed.toLowerCase().startsWith("http://") ? trimmed : null;
+  const base = normalizeOpenAiBase(s.customUrl);
+  return base.toLowerCase().startsWith("http://") ? base : null;
 }
 
 function displayTarget(s: Settings): string {

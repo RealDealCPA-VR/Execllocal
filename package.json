@@ -31,7 +31,9 @@
     "start:debug": "office-addin-debugging start manifest.xml",
     "serve": "node server/serve.js",
     "manifest:remote": "node tools/make-remote-manifest.js",
-    "sideload:remote": "office-addin-dev-settings sideload manifest-remote.xml desktop"
+    "sideload:remote": "office-addin-dev-settings sideload manifest-remote.xml desktop",
+    "service:install": "tools\\install-background-service.cmd",
+    "service:uninstall": "tools\\uninstall-background-service.cmd"
   },
   "dependencies": {
     "@fluentui/react-components": "^9.55.1",
