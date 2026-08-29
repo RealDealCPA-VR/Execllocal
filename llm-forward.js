@@ -133,7 +133,13 @@ function createForwardHandler(vllmUrl, opts) {
     if (stripPrefix && targetPath.startsWith("/vllm")) {
       targetPath = targetPath.slice(5) || "/";
     }
-    const fullPath = joinUpstreamPath(upstream, targetPath);
+    // Tolerate OpenAI-style base URLs that include a trailing /v1 (the client
+    // appends /v1/... itself, so a /v1 suffix on the target would double up).
+    let pathPrefix = upstream.pathname;
+    if (dynamicTarget && pathPrefix.toLowerCase().endsWith("/v1")) {
+      pathPrefix = pathPrefix.slice(0, -3) || "/";
+    }
+    const fullPath = joinUpstreamPath({ ...upstream, pathname: pathPrefix }, targetPath);
 
     const lib = upstream.protocol === "https:" ? https : http;
     const upstreamReq = lib.request(

@@ -2,10 +2,9 @@
 setlocal
 REM ============================================================
 REM  ExcelLocal background pane server (Windows)
-REM  - starts hidden at every login, no terminal window
+REM  - starts hidden at every login (Startup folder, no admin needed)
 REM  - serves the pane + LLM bridges on http://127.0.0.1:3000
-REM  Run this once; afterwards Excel just works. Uninstall:
-REM  tools\uninstall-background-service.cmd
+REM  Undo: tools\uninstall-background-service.cmd
 REM ============================================================
 
 where node >nul 2>nul
@@ -25,16 +24,14 @@ if not exist "%REPO%\dist\taskpane.html" (
 
 echo Stopping the dev server if it is running ^(frees port 3000^)...
 pushd "%REPO%" && call npm run stop >nul 2>nul & popd
+for /f "tokens=5" %%p in ('netstat -ano ^| findstr ":3000 .*LISTENING"') do taskkill /F /PID %%p >nul 2>nul
 
-echo Writing hidden launcher...
+echo Writing hidden launcher to the Startup folder...
 > "%REPO%\tools\serve-hidden.vbs" echo CreateObject^("WScript.Shell"^).Run "cmd /c cd /d ""%REPO%"" && node server\serve.js", 0, False
-
-echo Creating scheduled task ^(runs hidden at every login^)...
-schtasks /create /f /tn "ExcelLocalPaneServer" /tr "wscript.exe \"%REPO%\tools\serve-hidden.vbs\"" /sc onlogon
-if errorlevel 1 ( echo Could not create the scheduled task. & pause & exit /b 1 )
+copy /y "%REPO%\tools\serve-hidden.vbs" "%APPDATA%\Microsoft\Windows\Start Menu\Programs\Startup\ExcelLocalPaneServer.vbs" >nul
 
 echo Starting it now...
-schtasks /run /tn "ExcelLocalPaneServer"
+wscript.exe "%REPO%\tools\serve-hidden.vbs"
 
 echo Waiting for the pane server...
 set /a tries=0
@@ -44,9 +41,9 @@ set /a tries+=1
 curl.exe -s -o NUL -w "%%{http_code}" http://127.0.0.1:3000/taskpane.html | find "200" >nul
 if errorlevel 1 (
   if %tries% lss 10 goto waitloop
-  echo Pane server did not come up on port 3000. Check Task Scheduler for "ExcelLocalPaneServer".
+  echo Pane server did not come up on port 3000.
   pause & exit /b 1
 )
 echo Pane server is live on http://127.0.0.1:3000 ^(hidden - no window^).
-echo Reload the ExcelLocal pane in Excel ^(or restart Excel^) and you are set.
+echo Reload the ExcelLocal pane in Excel and you are set.
 pause
