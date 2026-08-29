@@ -267,10 +267,14 @@ export default function App(): React.ReactElement {
           onToolStart: (call) => addToolRun(call),
           onToolEnd: (call, summary, ok, declined) =>
             finishToolRun(call, summary, declined ? "declined" : ok ? "ok" : "error"),
-          confirmTool: (call) =>
-            new Promise<boolean>((resolve) => {
-              setPendingConfirm({ call, resolve });
-            }),
+          ...(settings.confirmWrites
+            ? {
+                confirmTool: (call: ToolCall) =>
+                  new Promise<boolean>((resolve) => {
+                    setPendingConfirm({ call, resolve });
+                  }),
+              }
+            : {}),
         },
         signal: controller.signal,
       });
@@ -458,12 +462,19 @@ export default function App(): React.ReactElement {
             <pre className="confirm-args">{previewArgs(pendingConfirm.call.args, 400)}</pre>
             <div className="confirm-actions">
               <button className="btn-secondary" onClick={() => resolveConfirm(false)}>
-                Cancel
+                Deny
               </button>
-              <button className="btn-primary" onClick={() => resolveConfirm(true)}>
-                Allow
+              <button className="btn-secondary" onClick={() => resolveConfirm(true)}>
+                Allow once
+              </button>
+              <button className="btn-primary" title="Turns off future confirmation prompts - re-enable in Settings" onClick={() => {
+                updateSettings({ confirmWrites: false });
+                resolveConfirm(true);
+              }}>
+                Always allow
               </button>
             </div>
+            <div className="confirm-hint">Allow once approves just this call. Always allow stops future prompts (Settings re-enables them).</div>
           </div>
         </div>
       )}

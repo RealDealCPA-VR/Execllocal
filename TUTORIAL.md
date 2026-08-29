@@ -128,9 +128,15 @@ the tool chips let you audit every step.
 
 ## Part 7 — Living with the confirm dialog
 
-- **Allow** → the write executes exactly as shown (the dialog shows the raw tool arguments).
-- **Cancel** → the model receives `{"declined": true}` and is instructed not to retry without asking you.
-- Brave? Uncheck *Ask before the model writes* in Settings. The tool chips still log everything.
+Before any write, you get one dialog with three answers:
+
+| Button | Effect |
+|---|---|
+| **Deny** | The model is told you declined and will not retry silently |
+| **Allow once** | Approves exactly this call |
+| **Always allow** | Approves this call **and stops future prompts** (re-enable anytime: Settings → *Ask before the model writes*) |
+
+Prefer no prompts at all? Uncheck **Ask before the model writes** in Settings — every tool chip still logs exactly what ran.
 
 ## Part 8 — Troubleshooting
 

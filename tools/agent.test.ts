@@ -181,6 +181,7 @@ async function testAbort(): Promise<void> {
   await testDeclinedWrite();
   await testMaxStepsGuard();
 
+  await testNoConfirmationMode();
   testNormalizeBase();
   testSseExtraction();
   await testAbort();
@@ -189,6 +190,27 @@ async function testAbort(): Promise<void> {
   console.error("TEST FAILURE:", e);
   process.exit(1);
 });
+
+// ---- writes run ungated when confirmation is off ----
+async function testNoConfirmationMode(): Promise<void> {
+  const transport = new ScriptedTransport([
+    [...toolCallEvents(0, "call_w", "write_range", WRITE_ARGS), { type: "finish", reason: "tool_calls" }],
+    [{ type: "content-delta", text: "Wrote it." }, { type: "finish", reason: "stop" }],
+  ]);
+  const { execute, executed } = makeExecutor();
+  const result = await runAgent({
+    transport,
+    transportOptions: { baseUrl: "mock", model: "m", temperature: 0 },
+    systemPrompt: "sys",
+    history: [],
+    userMessage: "write",
+    tools: [],
+    executor: { execute },
+  });
+  assert.strictEqual(result.content, "Wrote it.");
+  assert.strictEqual(executed.length, 1); // executed with NO confirmation gate
+  console.log("PASS testNoConfirmationMode");
+}
 
 // ---- OpenAI base URL normalization unit tests ----
 function testNormalizeBase(): void {

@@ -44,7 +44,7 @@ You:   "🤯 and it never left my machine"
 | 🪟 | **Real task pane** — sideloads into desktop Excel, lives on the Home ribbon |
 | 🧠 | **True agent loop** — streaming chat, reasoning visible, multi-step tool chains |
 | 📊 | **10 workbook tools** — read, write, formulas, format, tables, sheets, charts |
-| 🛡️ | **Confirm-before-write** — the model asks before it touches your cells (toggleable) |
+| 🛡️ | **Confirm-before-write** — Deny / Allow once / Always allow per dialog (toggleable in Settings) |
 | 👁️ | **Selection awareness** — fresh workbook snapshot (sheets, headers, samples, selection) injected every turn |
 | 🎥 | **Streaming everything** — SSE deltas, collapsible "Thinking" for reasoning models (GLM/Qwen3) |
 | 🔒 | **Zero egress** — pane → built-in bridge → your GPU → back. That's the whole journey |

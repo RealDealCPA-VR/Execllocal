@@ -412,3 +412,9 @@ body {
 }
 
 .app { position: relative; }
+
+/* ---- confirm hint ---- */
+.confirm-hint {
+  font-size: 11px;
+  color: #616161;
+}
