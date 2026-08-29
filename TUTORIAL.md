@@ -37,6 +37,17 @@ Not sure which parser? `vllm serve --tool-call-parser=help` lists them all.
 
 ## Part 3 — Launch the add-in
 
+**Get the code first** (one time):
+
+```bash
+git clone https://github.com/RealDealCPA-VR/Execllocal.git
+cd Execllocal
+```
+
+> No git? Use the green **Code** button on the repo page → Download ZIP → unzip.
+> Windows may flag the `start-excellocal.cmd` launcher with SmartScreen — choose *More info → Run anyway*; it only runs npm.
+
+Then, in that folder, open a terminal:
 Open the project folder in a terminal:
 
 ```bash
@@ -128,6 +139,7 @@ the tool chips let you audit every step.
 | Red banner *"Cannot reach LLM server..."* | Is the LLM server up (`curl http://localhost:8000/v1/models`)? Right server type picked in Settings? |
 | Chat works but model never *does* anything | vLLM missing `--enable-auto-tool-choice --tool-call-parser <family>` (Part 2) |
 | Model makes tool calls that error instantly | Wrong parser for the model family; or the model is too small for tool use |
+| `npm start` says port 3000 is busy | Close whatever owns the port (a reboot works) or run `npm run stop` first |
 | Pane is blank / doesn't load | `npm run stop`, then `npm start` again |
 | *"Reached the tool-step limit"* | Big task — reply "continue" and it picks up where it stopped |
 | Huge sheet, model seems blind | Snapshot shows the first rows only; ask it to `read_range` specific columns |

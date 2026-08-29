@@ -86,7 +86,17 @@ anything exotic.
 
 **You need:** Node.js 18+ · Microsoft 365 Excel (desktop) · a local LLM server (vLLM, Ollama, LM Studio, llama.cpp — anything OpenAI-shaped).
 
-**1. Serve a brain** — vLLM with tool calling switched ON:
+**0. Get the code** (and Node):
+
+```bash
+git clone https://github.com/RealDealCPA-VR/Execllocal.git
+cd Execllocal
+```
+
+> No git? Use the green **Code** button on the repo page → Download ZIP → unzip it.
+> No Node? Grab the LTS from [nodejs.org](https://nodejs.org).
+
+**2. Serve a brain** — vLLM with tool calling switched ON:
 
 ```bash
 vllm serve <model> --enable-auto-tool-choice --tool-call-parser hermes    # Qwen3 family
@@ -95,7 +105,7 @@ vllm serve <model> --enable-auto-tool-choice --tool-call-parser glm45    # GLM-4
 
 > Use the parser that matches your model (`vllm serve --tool-call-parser=help`).
 
-**2. Launch — one terminal, everything built in:**
+**3. Launch — one terminal, everything built in:**
 
 ```bash
 npm install   # first run only
@@ -107,7 +117,7 @@ npm start     # builds, serves the pane, bridges /vllm /ollama /lmstudio, sidelo
 - First launch asks you to trust *"Developer CA for Microsoft Office Add-ins"* — accept once.
 - Done for the day? `npm run stop` unloads the add-in, then close the terminal.
 
-**3. In Excel:** **Home** ribbon → **ExcelLocal** → gear icon → pick your **LLM server** (vLLM / Ollama / LM Studio / Custom URL) and **model** from the auto-populated list → chat.
+**4. In Excel:** **Home** ribbon → **ExcelLocal** → gear icon → pick your **LLM server** (vLLM / Ollama / LM Studio / Custom URL) and **model** from the auto-populated list → chat.
 
 > Serving models on another box (Tailscale/LAN, plain HTTP)? Pick **Custom URL** and type its `http://` address — see the next section.
 
@@ -175,6 +185,8 @@ manifest.xml                      Office add-in manifest (validated)
 - **Tool-call quality = model quality** — small models will fumble tool syntax; use a
   tool-call parser matched to your model family and a model that can actually follow instructions.
 - **Big sheets** — snapshots cap sample sizes; the model can read more through tools, range by range.
+- **Port 3000 busy** — `npm start` needs it for the pane; close whatever owns it (a reboot works) or run `npm run stop` first.
+- **Office.js CDN** — the one standard exception to "fully local": the pane boots Microsoft's Office.js from their CDN (cached after first load). Your prompts, workbook data, and model traffic never leave your machine.
 - **First `npm start`** — Windows asks once to trust the Office dev certificate. Say yes.
 
 ## 🕊️ Privacy statement
