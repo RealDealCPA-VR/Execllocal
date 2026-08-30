@@ -17,10 +17,6 @@ const http = require("http");
 const net = require("net");
 const https = require("https");
 
-function octets(host) {
-  return host.split(".").map((p) => parseInt(p, 10));
-}
-
 /**
  * Guardrail for dynamic bridging (personal-use semantics):
  *  - any HOSTNAME is allowed (your machine resolves it: Tailscale MagicDNS short names,
@@ -40,8 +36,9 @@ function isAllowedBridgeTarget(target) {
   if (u.protocol !== "http:" && u.protocol !== "https:") {
     return false;
   }
-  const host = u.hostname.toLowerCase();
-  if (host === "localhost" || host.endsWith(".localhost") || host === "::1") {
+  // URL keeps IPv6 literals bracketed ("[::1]"); net.isIP needs them bare.
+  const host = u.hostname.toLowerCase().replace(/^\[|\]$/g, "");
+  if (host === "localhost" || host.endsWith(".localhost")) {
     return true;
   }
   const ipVersion = net.isIP(host);
@@ -49,8 +46,8 @@ function isAllowedBridgeTarget(target) {
     return true; // hostname: resolved by this machine's own DNS (MagicDNS, LAN, FQDN)
   }
   if (ipVersion === 6) {
-    const lower = host.replace(/^.*:/, "");
-    return host === "::1" || /^fc[0-9a-f]{2}:/i.test(host + ":") || host.startsWith("fc") || host.startsWith("fd");
+    // loopback (::1), IPv4-mapped loopback, and ULA fc00::/7 only
+    return host === "::1" || host === "::ffff:127.0.0.1" || /^f[cd][0-9a-f]{0,2}:/.test(host);
   }
   // IPv4 literal: loopback + private ranges only
   const parts = host.split(".").map((p) => parseInt(p, 10));
@@ -77,6 +74,30 @@ function joinUpstreamPath(upstream, targetPath) {
     return upstream.pathname.slice(0, -1) + targetPath;
   }
   return upstream.pathname + targetPath;
+}
+
+/**
+ * Node's happy-eyeballs connect failures arrive as an AggregateError whose own
+ * `message` is empty, which surfaced in the pane as a bare "AggregateError".
+ * Unwrap it so the user sees ECONNREFUSED and the address that was tried.
+ */
+function describeConnectError(err) {
+  if (!err) {
+    return "unknown error";
+  }
+  const parts = [];
+  const add = (msg, code) => {
+    if (!msg && !code) {
+      return;
+    }
+    parts.push(msg || code);
+  };
+  add(err.message, err.code);
+  for (const e of Array.isArray(err.errors) ? err.errors : []) {
+    add(e && e.message, e && e.code);
+  }
+  const unique = Array.from(new Set(parts.filter(Boolean)));
+  return unique.length ? unique.join("; ") : err.code || String(err);
 }
 
 function createForwardHandler(vllmUrl, opts) {
@@ -141,15 +162,26 @@ function createForwardHandler(vllmUrl, opts) {
     }
     const fullPath = joinUpstreamPath({ ...upstream, pathname: pathPrefix }, targetPath);
 
+    // Do not leak the bridge control header (or hop-by-hop headers) upstream.
+    const outHeaders = { ...req.headers, host: upstream.host };
+    delete outHeaders["x-llm-target"];
+    delete outHeaders.connection;
+    delete outHeaders["keep-alive"];
+    delete outHeaders["proxy-connection"];
+    delete outHeaders["transfer-encoding"];
+    delete outHeaders.origin;
+    delete outHeaders.referer;
+
     const lib = upstream.protocol === "https:" ? https : http;
     const upstreamReq = lib.request(
       {
         protocol: upstream.protocol,
-        hostname: upstream.hostname,
+        // URL.hostname keeps IPv6 brackets; net.connect wants the bare address.
+        hostname: upstream.hostname.replace(/^\[|\]$/g, ""),
         port: upstream.port || (upstream.protocol === "https:" ? 443 : 80),
         path: fullPath,
         method: req.method,
-        headers: { ...req.headers, host: upstream.host },
+        headers: outHeaders,
         ...(insecureTlsOk ? { rejectUnauthorized: false } : {}),
       },
       (upstreamRes) => {
@@ -159,6 +191,9 @@ function createForwardHandler(vllmUrl, opts) {
     );
 
     upstreamReq.on("error", (err) => {
+      if (res.writableEnded) {
+        return;
+      }
       if (!res.headersSent) {
         res.writeHead(502, { "Content-Type": "application/json" });
       }
@@ -169,7 +204,7 @@ function createForwardHandler(vllmUrl, opts) {
             upstream.origin +
             (upstream.pathname === "/" ? "" : upstream.pathname) +
             ": " +
-            (err && err.message ? err.message : String(err)),
+            describeConnectError(err),
         })
       );
     });
@@ -183,4 +218,4 @@ function createForwardHandler(vllmUrl, opts) {
   };
 }
 
-module.exports = { createForwardHandler, isAllowedBridgeTarget };
+module.exports = { createForwardHandler, isAllowedBridgeTarget, describeConnectError };

@@ -3,6 +3,7 @@
  * produces a final answer. Deliberately free of Office.js and DOM code so it
  * can be unit-tested in Node with a fake transport and fake executor.
  */
+/* global AbortSignal */
 import type { Transport, TransportOptions, WireMessage } from "./transport";
 import { WRITE_TOOLS } from "./tools";
 
@@ -13,7 +14,10 @@ export interface ToolCall {
 }
 
 export interface ToolExecutor {
-  execute(name: string, args: Record<string, unknown>): Promise<{ result: unknown; summary: string }>;
+  execute(
+    name: string,
+    args: Record<string, unknown>
+  ): Promise<{ result: unknown; summary: string }>;
 }
 
 export interface AgentCallbacks {
@@ -45,6 +49,14 @@ export interface RunResult {
   aborted: boolean;
   /** True when the loop stopped because maxSteps ran out mid-tool-chain. */
   limitReached: boolean;
+  /** True when the model stopped because it hit the server's token limit. */
+  truncated?: boolean;
+}
+
+/** An abort surfaces as a DOMException/Error named AbortError, not as a flag. */
+function isAbortError(e: unknown): boolean {
+  const err = e as { name?: string; message?: string };
+  return err?.name === "AbortError" || /aborted/i.test(String(err?.message ?? ""));
 }
 
 export async function runAgent(o: RunOptions): Promise<RunResult> {
@@ -57,76 +69,125 @@ export async function runAgent(o: RunOptions): Promise<RunResult> {
   const maxSteps = o.maxSteps ?? 12;
   let finalContent = "";
   let steps = 0;
+  let truncated = false;
 
   while (steps < maxSteps) {
+    if (o.signal?.aborted) {
+      return { content: finalContent, steps, aborted: true, limitReached: false, truncated };
+    }
     steps++;
     let content = "";
     let finishReason = "";
     const calls: Array<{ index: number; id?: string; name?: string; args: string }> = [];
 
-    for await (const ev of o.transport.stream(messages, { ...o.transportOptions, tools: o.tools })) {
-      switch (ev.type) {
-        case "content-delta":
-          content += ev.text;
-          o.callbacks?.onContentDelta?.(ev.text);
-          break;
-        case "reasoning-delta":
-          o.callbacks?.onReasoningDelta?.(ev.text);
-          break;
-        case "tool-call-start": {
-          const existing = calls.find((c) => c.index === ev.index);
-          if (existing) {
-            if (ev.id) existing.id = ev.id;
-            if (ev.name) existing.name = ev.name;
-          } else {
-            calls.push({ index: ev.index, id: ev.id, name: ev.name, args: "" });
+    try {
+      for await (const ev of o.transport.stream(messages, {
+        ...o.transportOptions,
+        tools: o.tools,
+      })) {
+        switch (ev.type) {
+          case "content-delta":
+            content += ev.text;
+            o.callbacks?.onContentDelta?.(ev.text);
+            break;
+          case "reasoning-delta":
+            o.callbacks?.onReasoningDelta?.(ev.text);
+            break;
+          case "tool-call-start": {
+            const existing = calls.find((c) => c.index === ev.index);
+            if (existing) {
+              if (ev.id) existing.id = ev.id;
+              if (ev.name) existing.name = ev.name;
+            } else {
+              calls.push({ index: ev.index, id: ev.id, name: ev.name, args: "" });
+            }
+            break;
           }
-          break;
-        }
-        case "tool-call-args": {
-          const c = calls.find((x) => x.index === ev.index);
-          if (c) {
-            c.args += ev.argsDelta;
+          case "tool-call-args": {
+            const c = calls.find((x) => x.index === ev.index);
+            if (c) {
+              c.args += ev.argsDelta;
+            } else {
+              // Some servers omit the opening fragment; keep the arguments
+              // rather than dropping the call entirely.
+              calls.push({ index: ev.index, args: ev.argsDelta });
+            }
+            break;
           }
-          break;
+          case "finish":
+            // "done" is the [DONE] sentinel and must not mask a real reason.
+            if (ev.reason && ev.reason !== "done") {
+              finishReason = ev.reason;
+            }
+            break;
         }
-        case "finish":
-          finishReason = ev.reason;
-          break;
       }
+    } catch (e) {
+      if (isAbortError(e) || o.signal?.aborted) {
+        return {
+          content: content || finalContent,
+          steps,
+          aborted: true,
+          limitReached: false,
+          truncated,
+        };
+      }
+      throw e;
     }
 
     if (o.signal?.aborted) {
-      return { content, steps, aborted: true, limitReached: false };
+      return {
+        content: content || finalContent,
+        steps,
+        aborted: true,
+        limitReached: false,
+        truncated,
+      };
     }
 
+    if (finishReason === "length") {
+      truncated = true;
+    }
     finalContent = content;
 
     if (calls.length === 0) {
-      return { content, steps, aborted: false, limitReached: false };
+      return { content, steps, aborted: false, limitReached: false, truncated };
     }
+
+    // Servers may stream fragments out of order; the wire protocol pairs the
+    // assistant tool_calls with the tool results by id, so ids must be unique
+    // and identical in both places.
+    calls.sort((a, b) => a.index - b.index);
+    const seenIds = new Set<string>();
+    const resolved: ToolCall[] = calls.map((c, i) => {
+      let id = c.id || "call_" + i;
+      if (seenIds.has(id)) {
+        id = id + "_" + i;
+      }
+      seenIds.add(id);
+      return { id, name: c.name || "unknown", args: c.args || "{}" };
+    });
 
     messages.push({
       role: "assistant",
       content: content || "",
-      tool_calls: calls.map((c, i) => ({
-        id: c.id || "call_" + i,
+      tool_calls: resolved.map((c) => ({
+        id: c.id,
         type: "function" as const,
-        function: { name: c.name || "unknown", arguments: c.args || "{}" },
+        function: { name: c.name, arguments: c.args },
       })),
     });
 
-    for (let i = 0; i < calls.length; i++) {
-      const call: ToolCall = {
-        id: calls[i].id || "call_" + i,
-        name: calls[i].name || "unknown",
-        args: calls[i].args || "{}",
-      };
+    for (const call of resolved) {
       o.callbacks?.onToolStart?.(call);
 
       let args: Record<string, unknown> = {};
       try {
-        args = JSON.parse(call.args);
+        const parsed = JSON.parse(call.args);
+        args =
+          parsed && typeof parsed === "object" && !Array.isArray(parsed)
+            ? (parsed as Record<string, unknown>)
+            : {};
       } catch {
         args = {};
       }
@@ -136,7 +197,12 @@ export async function runAgent(o: RunOptions): Promise<RunResult> {
       let ok = true;
       let declined = false;
 
-      if (WRITE_TOOLS.has(call.name) && o.callbacks?.confirmTool) {
+      if (o.signal?.aborted) {
+        declined = true;
+        ok = false;
+        result = { error: "Cancelled by the user before this tool ran." };
+        summary = "Cancelled";
+      } else if (WRITE_TOOLS.has(call.name) && o.callbacks?.confirmTool) {
         const approved = await o.callbacks.confirmTool(call);
         if (!approved) {
           declined = true;
@@ -153,15 +219,26 @@ export async function runAgent(o: RunOptions): Promise<RunResult> {
           summary = out.summary;
         } catch (e) {
           ok = false;
-          result = { error: String((e as Error)?.message ?? e) };
-          summary = "Tool error";
+          const message = String((e as Error)?.message ?? e);
+          result = { error: message };
+          summary = message.slice(0, 140) || "Tool error";
         }
       }
 
       o.callbacks?.onToolEnd?.(call, summary, ok, declined);
-      messages.push({ role: "tool", tool_call_id: call.id, content: JSON.stringify(result) });
+      // Every tool_call in the assistant message needs a matching tool message
+      // or the next request is rejected by OpenAI-compatible servers.
+      messages.push({
+        role: "tool",
+        tool_call_id: call.id,
+        content: JSON.stringify(result ?? null),
+      });
+    }
+
+    if (o.signal?.aborted) {
+      return { content: finalContent, steps, aborted: true, limitReached: false, truncated };
     }
   }
 
-  return { content: finalContent, steps, aborted: false, limitReached: true };
+  return { content: finalContent, steps, aborted: false, limitReached: true, truncated };
 }

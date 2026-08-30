@@ -68,10 +68,34 @@ function start(cmd, args, env) {
     assert.strictEqual(executed[0].name, "read_range");
     assert.deepStrictEqual(executed[0].args, { sheet: "Sheet1", address: "A1:B2" });
     console.log("PASS integration: real fetch -> TLS proxy -> SSE tool_call -> agent loop -> executor -> final answer");
-    console.log("ALL INTEGRATION CHECKS PASSED");
   } finally {
     mock.kill();
     proxy.kill();
+  }
+
+  // Second pass: a server that ignores `stream: true` and returns one JSON body.
+  const plainPort = await getFreePort();
+  const proxy2Port = await getFreePort();
+  const plain = start("node", ["tools/mock-vllm.js"], { MOCK_NONSTREAM: "1", MOCK_PORT: String(plainPort) });
+  const proxy2 = start("node", ["llm-proxy.js"], { VLLM_URL: "http://localhost:" + plainPort, PROXY_PORT: String(proxy2Port) });
+  await wait(2500);
+  try {
+    const result = await runAgent({
+      transport: new HttpTransport(),
+      transportOptions: { baseUrl: "https://localhost:" + proxy2Port + "/vllm", model: "mock-model", temperature: 0 },
+      systemPrompt: "integration test",
+      history: [],
+      userMessage: "hello",
+      tools: [],
+      executor: { execute: async () => ({ result: {}, summary: "" }) },
+    });
+    assert.strictEqual(result.content, "Whole-body reply.");
+    assert.strictEqual(result.aborted, false);
+    console.log("PASS integration: non-streaming server falls back to whole-body parsing");
+    console.log("ALL INTEGRATION CHECKS PASSED");
+  } finally {
+    plain.kill();
+    proxy2.kill();
   }
 })().catch((e) => {
   console.error("INTEGRATION FAILURE:", e);

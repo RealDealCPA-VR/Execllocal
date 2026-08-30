@@ -17,7 +17,6 @@
  *   PROXY_PORT  listen port        (default 4001)
  */
 const https = require("https");
-const devCerts = require("office-addin-dev-certs");
 const fs = require("fs");
 const path = require("path");
 const os = require("os");
@@ -36,6 +35,8 @@ async function getTlsOptions() {
   if (fs.existsSync(crt) && fs.existsSync(key)) {
     return { cert: fs.readFileSync(crt), key: fs.readFileSync(key) };
   }
+  // Only required lazily: on a box that already has the certs on disk this
+  // module (and its CA-install prompt) is never loaded.
   const devCerts = require("office-addin-dev-certs");
   return await devCerts.getHttpsServerOptions();
 }
@@ -47,6 +48,15 @@ async function main() {
 
   const server = https.createServer(tlsOptions, (clientReq, clientRes) => {
     forward(clientReq, clientRes);
+  });
+
+  server.on("error", (err) => {
+    console.error(
+      err && err.code === "EADDRINUSE"
+        ? "Port " + PROXY_PORT + " is already in use. Set PROXY_PORT to another port."
+        : "Proxy error: " + (err && err.message ? err.message : String(err))
+    );
+    process.exit(1);
   });
 
   server.listen(PROXY_PORT, () => {

@@ -8,8 +8,11 @@ function objProps(props: Record<string, unknown>, required: string[]) {
 }
 
 const RANGE_PROPS = {
-  sheet: { type: "string", description: "Exact worksheet name" },
-  address: { type: "string", description: "A1-style range, e.g. B2:D10" },
+  sheet: { type: "string", description: "Exact worksheet name (no quotes, no ! suffix)" },
+  address: {
+    type: "string",
+    description: "Bare A1-style range without the sheet name, e.g. B2:D10",
+  },
 };
 
 export const TOOL_SCHEMAS: unknown[] = [
@@ -26,7 +29,8 @@ export const TOOL_SCHEMAS: unknown[] = [
     type: "function",
     function: {
       name: "get_selection",
-      description: "Values and formulas of the range the user currently has selected (capped in size).",
+      description:
+        "Values and formulas of the range the user currently has selected (capped in size).",
       parameters: objProps({}, []),
     },
   },
@@ -39,7 +43,10 @@ export const TOOL_SCHEMAS: unknown[] = [
       parameters: objProps(
         {
           ...RANGE_PROPS,
-          include_formulas: { type: "boolean", description: "Include formulas when present (default true)" },
+          include_formulas: {
+            type: "boolean",
+            description: "Include formulas when present (default true)",
+          },
         },
         ["sheet", "address"]
       ),
@@ -49,7 +56,8 @@ export const TOOL_SCHEMAS: unknown[] = [
     type: "function",
     function: {
       name: "write_range",
-      description: "Write a 2D array of literal values into a range. Rows x columns must fit the target shape (a single row or column may be given as a 1D array).",
+      description:
+        "Write a 2D array of literal values into a range. Pass either the exact target range, or just the top-left cell (e.g. A1) and the range is sized to the data. A single row or column may be given as a 1D array.",
       parameters: objProps(
         {
           ...RANGE_PROPS,
@@ -67,7 +75,8 @@ export const TOOL_SCHEMAS: unknown[] = [
     type: "function",
     function: {
       name: "write_formulas",
-      description: 'Write a 2D array of formulas (each a string starting with "=") into a range. Returns the computed values after recalculation.',
+      description:
+        'Write a 2D array of formulas (each a string starting with "=") into a range. Pass either the exact target range or just the top-left cell. Returns the computed values after recalculation.',
       parameters: objProps(
         {
           ...RANGE_PROPS,
@@ -92,11 +101,23 @@ export const TOOL_SCHEMAS: unknown[] = [
           bold: { type: "boolean" },
           italic: { type: "boolean" },
           font_size: { type: "number" },
-          font_color: { type: "string", description: "Hex color like #FF0000 or a color name" },
-          fill_color: { type: "string", description: "Hex background color like #FFFF00" },
-          number_format: { type: "string", description: 'Excel number format code, e.g. "#,##0.00" or "0%"' },
+          font_color: {
+            type: "string",
+            description: 'Hex color like #FF0000, or a plain name like "red"',
+          },
+          fill_color: {
+            type: "string",
+            description: 'Hex background color like #FFFF00, or a plain name like "yellow"',
+          },
+          number_format: {
+            type: "string",
+            description: 'Excel number format code, e.g. "#,##0.00" or "0%"',
+          },
           horizontal_alignment: { type: "string", description: "Left | Center | Right" },
-          autofit_columns: { type: "boolean", description: "Auto-fit the column widths (default true when formatting)" },
+          autofit_columns: {
+            type: "boolean",
+            description: "Auto-fit the column widths (default true when formatting)",
+          },
         },
         ["sheet", "address"]
       ),
@@ -127,7 +148,10 @@ export const TOOL_SCHEMAS: unknown[] = [
         {
           ...RANGE_PROPS,
           name: { type: "string", description: "Optional table name (must be unique, no spaces)" },
-          has_headers: { type: "boolean", description: "Whether the first row is a header row (default true)" },
+          has_headers: {
+            type: "boolean",
+            description: "Whether the first row is a header row (default true)",
+          },
         },
         ["sheet", "address"]
       ),
@@ -141,9 +165,16 @@ export const TOOL_SCHEMAS: unknown[] = [
       parameters: objProps(
         {
           sheet: { type: "string", description: "Worksheet that holds the data" },
-          source_address: { type: "string", description: "A1 range with the data (include headers)" },
+          source_address: {
+            type: "string",
+            description: "A1 range with the data (include headers)",
+          },
           chart_type: { type: "string", description: "column | bar | line | pie" },
-          target_cell: { type: "string", description: "Top-left cell where the chart is placed, e.g. F2" },
+          target_cell: {
+            type: "string",
+            description:
+              "Anchor cell where the chart is placed, e.g. F2 (the chart keeps its default size)",
+          },
         },
         ["sheet", "source_address", "chart_type", "target_cell"]
       ),
