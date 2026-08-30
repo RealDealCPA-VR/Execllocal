@@ -1,5 +1,11 @@
 import * as React from "react";
-import { SettingsRegular, SendRegular, StopRegular, ArrowClockwiseRegular } from "@fluentui/react-icons";
+import {
+  SettingsRegular,
+  SendRegular,
+  StopRegular,
+  ArrowClockwiseRegular,
+  ChatAddRegular,
+} from "@fluentui/react-icons";
 import { HttpTransport, normalizeOpenAiBase } from "../llm/transport";
 import { runAgent, ToolCall } from "../llm/agent";
 import { TOOL_SCHEMAS } from "../llm/tools";
@@ -36,6 +42,9 @@ interface ChatMessage {
 }
 
 const SETTINGS_KEY = "excellocal.settings.v1";
+/** Turns of prior chat replayed to the model. Older turns are dropped so a long
+ *  session never silently overruns a local model's context window. */
+const MAX_HISTORY_MESSAGES = 20;
 
 const DEFAULT_SETTINGS: Settings = {
   // Same-origin bridge served by `npm start` itself (see llm-forward.js).
@@ -111,6 +120,9 @@ export default function App(): React.ReactElement {
   const [streaming, setStreaming] = React.useState(false);
   const [pendingConfirm, setPendingConfirm] = React.useState<{ call: ToolCall; resolve: (ok: boolean) => void } | null>(null);
   const abortRef = React.useRef<AbortController | null>(null);
+  // Set by "Always allow" so the rest of the CURRENT run stops prompting; the
+  // settings update alone cannot do that, the callback is already bound.
+  const skipConfirmRef = React.useRef(false);
   const listRef = React.useRef<HTMLDivElement | null>(null);
   const transportRef = React.useRef<HttpTransport | null>(null);
   if (!transportRef.current) {
@@ -235,7 +247,8 @@ export default function App(): React.ReactElement {
     const assistantMsg: ChatMessage = { role: "assistant", content: "" };
     const history: Array<{ role: "user" | "assistant"; content: string }> = messages
       .filter((m) => !m.isError && m.content.trim())
-      .map((m) => ({ role: m.role, content: m.content }));
+      .map((m) => ({ role: m.role, content: m.content }))
+      .slice(-MAX_HISTORY_MESSAGES);
 
     setMessages((prev) => [...prev, userMsg, assistantMsg]);
     setInput("");
@@ -243,6 +256,7 @@ export default function App(): React.ReactElement {
 
     const controller = new AbortController();
     abortRef.current = controller;
+    skipConfirmRef.current = false;
 
     try {
       const workbookSummary = await buildWorkbookSummary();
@@ -270,19 +284,27 @@ export default function App(): React.ReactElement {
           ...(settings.confirmWrites
             ? {
                 confirmTool: (call: ToolCall) =>
-                  new Promise<boolean>((resolve) => {
-                    setPendingConfirm({ call, resolve });
-                  }),
+                  skipConfirmRef.current
+                    ? Promise.resolve(true)
+                    : new Promise<boolean>((resolve) => {
+                        setPendingConfirm({ call, resolve });
+                      }),
               }
             : {}),
         },
         signal: controller.signal,
       });
       if (result.limitReached) {
-        appendToLastAssistant({ content: "\n\n(Reached the tool-step limit for one request. Ask me to continue if there is more to do.)" });
+        appendToLastAssistant({
+          content: "\n\n(Reached the tool-step limit for one request. Ask me to continue if there is more to do.)",
+        });
+      }
+      if (result.truncated) {
+        appendToLastAssistant({ content: "\n\n(The model hit its output-token limit. Ask it to continue.)" });
       }
       if (result.aborted) {
-        appendToLastAssistant({ content: (result.content ? "" : "\n\n(stopped)") });
+        // Always mark it: a half-finished answer otherwise reads as complete.
+        appendToLastAssistant({ content: "\n\n(stopped)" });
       }
     } catch (e) {
       const err = e as Error;
@@ -302,6 +324,13 @@ export default function App(): React.ReactElement {
     } finally {
       setStreaming(false);
       abortRef.current = null;
+      skipConfirmRef.current = false;
+      // A failed run must never leave the confirm overlay (and the composer)
+      // stuck; resolve anything still waiting.
+      setPendingConfirm((p) => {
+        p?.resolve(false);
+        return null;
+      });
     }
   };
 
@@ -318,6 +347,14 @@ export default function App(): React.ReactElement {
       e.preventDefault();
       void sendMessage();
     }
+  };
+
+  const newChat = () => {
+    if (streaming || pendingConfirm) {
+      return;
+    }
+    setMessages([]);
+    setInput("");
   };
 
   const resolveConfirm = (ok: boolean) => {
@@ -337,13 +374,28 @@ export default function App(): React.ReactElement {
         <div className="app-header-actions">
           <button
             className="icon-btn"
+            title="New chat"
+            aria-label="New chat"
+            onClick={newChat}
+            disabled={streaming || !!pendingConfirm || messages.length === 0}
+          >
+            <ChatAddRegular />
+          </button>
+          <button
+            className="icon-btn"
             title="Refresh models"
+            aria-label="Refresh models"
             onClick={() => void refreshModels(settings)}
             disabled={streaming}
           >
             <ArrowClockwiseRegular />
           </button>
-          <button className="icon-btn" title="Settings" onClick={() => setShowSettings((v) => !v)}>
+          <button
+            className="icon-btn"
+            title="Settings"
+            aria-label="Settings"
+            onClick={() => setShowSettings((v) => !v)}
+          >
             <SettingsRegular />
           </button>
         </div>
@@ -377,7 +429,12 @@ export default function App(): React.ReactElement {
           <label className="field">
             <span>Model</span>
             <select value={settings.model} onChange={(e) => updateSettings({ model: e.target.value })}>
-              {models.length === 0 && <option value="">(none detected)</option>}
+              {models.length === 0 && !settings.model && <option value="">(none detected)</option>}
+              {/* Keep the saved model selectable when the server probe failed,
+                  otherwise the <select> silently falls back to the first entry. */}
+              {settings.model && !models.includes(settings.model) && (
+                <option value={settings.model}>{settings.model} (saved)</option>
+              )}
               {models.map((m) => (
                 <option key={m} value={m}>
                   {m}
@@ -467,10 +524,15 @@ export default function App(): React.ReactElement {
               <button className="btn-secondary" onClick={() => resolveConfirm(true)}>
                 Allow once
               </button>
-              <button className="btn-primary" title="Turns off future confirmation prompts - re-enable in Settings" onClick={() => {
-                updateSettings({ confirmWrites: false });
-                resolveConfirm(true);
-              }}>
+              <button
+                className="btn-primary"
+                title="Turns off future confirmation prompts - re-enable in Settings"
+                onClick={() => {
+                  skipConfirmRef.current = true;
+                  updateSettings({ confirmWrites: false });
+                  resolveConfirm(true);
+                }}
+              >
                 Always allow
               </button>
             </div>

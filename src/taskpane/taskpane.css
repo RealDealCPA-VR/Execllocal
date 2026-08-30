@@ -178,11 +178,14 @@ body {
 
 .msg {
   max-width: 92%;
+  min-width: 0;
   padding: 8px 10px;
   border-radius: 8px;
   line-height: 1.45;
   white-space: pre-wrap;
   word-wrap: break-word;
+  /* Long formulas and addresses must not push the narrow pane sideways. */
+  overflow-wrap: anywhere;
 }
 
 .msg-user {

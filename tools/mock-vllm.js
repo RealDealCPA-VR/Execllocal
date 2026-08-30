@@ -76,6 +76,24 @@ http
     }
 
     if (req.method === "POST" && req.url.startsWith(BASE + "/v1/chat/completions")) {
+      // Some OpenAI-compatible servers ignore `stream: true` and answer with a
+      // single JSON body; the pane must handle that instead of showing nothing.
+      if (process.env.MOCK_NONSTREAM === "1") {
+        req.resume();
+        req.on("end", () => {
+          res.writeHead(200, { "Content-Type": "application/json" });
+          res.end(
+            JSON.stringify({
+              id: "mock",
+              object: "chat.completion",
+              choices: [
+                { index: 0, message: { role: "assistant", content: "Whole-body reply." }, finish_reason: "stop" },
+              ],
+            })
+          );
+        });
+        return;
+      }
       if (process.env.MOCK_AGENT === "1") {
         handleAgentChat(req, res);
         return;

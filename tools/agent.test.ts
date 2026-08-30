@@ -49,10 +49,7 @@ async function testToolRoundTrip(): Promise<void> {
       ...toolCallEvents(0, "call_1", "read_range", READ_ARGS),
       { type: "finish", reason: "tool_calls" },
     ],
-    [
-      ...toolCallEvents(0, "call_2", "write_range", WRITE_ARGS),
-      { type: "finish", reason: "tool_calls" },
-    ],
+    [...toolCallEvents(0, "call_2", "write_range", WRITE_ARGS), { type: "finish", reason: "tool_calls" }],
     [
       { type: "content-delta", text: "Done: wrote 4." },
       { type: "finish", reason: "stop" },
@@ -110,7 +107,10 @@ async function testToolRoundTrip(): Promise<void> {
 async function testDeclinedWrite(): Promise<void> {
   const transport = new ScriptedTransport([
     [...toolCallEvents(0, "call_9", "delete_sheet", '{"name":"Data"}'), { type: "finish", reason: "tool_calls" }],
-    [{ type: "content-delta", text: "Cancelled." }, { type: "finish", reason: "stop" }],
+    [
+      { type: "content-delta", text: "Cancelled." },
+      { type: "finish", reason: "stop" },
+    ],
   ]);
   const { execute, executed } = makeExecutor();
 
@@ -136,7 +136,10 @@ async function testDeclinedWrite(): Promise<void> {
 async function testMaxStepsGuard(): Promise<void> {
   const infinite: StreamEvent[][] = [];
   for (let i = 0; i < 20; i++) {
-    infinite.push([...toolCallEvents(0, "call_x" + i, "get_workbook_info", "{}"), { type: "finish", reason: "tool_calls" }]);
+    infinite.push([
+      ...toolCallEvents(0, "call_x" + i, "get_workbook_info", "{}"),
+      { type: "finish", reason: "tool_calls" },
+    ]);
   }
   const transport = new ScriptedTransport(infinite);
   const { execute } = makeExecutor();
@@ -159,7 +162,12 @@ async function testMaxStepsGuard(): Promise<void> {
 }
 
 async function testAbort(): Promise<void> {
-  const transport = new ScriptedTransport([[{ type: "content-delta", text: "partial" }, { type: "finish", reason: "stop" }]]);
+  const transport = new ScriptedTransport([
+    [
+      { type: "content-delta", text: "partial" },
+      { type: "finish", reason: "stop" },
+    ],
+  ]);
   const controller = new AbortController();
   controller.abort();
   const result = await runAgent({
@@ -173,29 +181,164 @@ async function testAbort(): Promise<void> {
     signal: controller.signal,
   });
   assert.strictEqual(result.aborted, true);
+  // Aborting before the first request must not issue one.
+  assert.strictEqual(transport.requests.length, 0);
   console.log("PASS testAbort");
 }
 
-(async () => {
-  await testToolRoundTrip();
-  await testDeclinedWrite();
-  await testMaxStepsGuard();
+// ---- an abort raised by the transport resolves, it does not reject ----
+async function testAbortDuringStream(): Promise<void> {
+  const controller = new AbortController();
+  const transport: Transport = {
+    // eslint-disable-next-line require-yield
+    async *stream(): AsyncIterable<StreamEvent> {
+      controller.abort();
+      const err = new Error("The operation was aborted.");
+      err.name = "AbortError";
+      throw err;
+    },
+  };
+  const result = await runAgent({
+    transport,
+    transportOptions: { baseUrl: "mock", model: "m", temperature: 0 },
+    systemPrompt: "sys",
+    history: [],
+    userMessage: "hi",
+    tools: [],
+    executor: { execute: makeExecutor().execute },
+    signal: controller.signal,
+  });
+  assert.strictEqual(result.aborted, true);
+  assert.strictEqual(result.limitReached, false);
+  console.log("PASS testAbortDuringStream");
+}
 
-  await testNoConfirmationMode();
-  testNormalizeBase();
-  testSseExtraction();
-  await testAbort();
-  console.log("ALL AGENT TESTS PASSED");
-})().catch((e) => {
-  console.error("TEST FAILURE:", e);
-  process.exit(1);
-});
+// ---- duplicate ids from the server must not desync tool_call <-> tool result ----
+async function testDuplicateToolCallIds(): Promise<void> {
+  const transport = new ScriptedTransport([
+    [
+      ...toolCallEvents(0, "dup", "read_range", READ_ARGS),
+      ...toolCallEvents(1, "dup", "get_selection", "{}"),
+      { type: "finish", reason: "tool_calls" },
+    ],
+    [
+      { type: "content-delta", text: "ok" },
+      { type: "finish", reason: "stop" },
+    ],
+  ]);
+  const { execute } = makeExecutor();
+  await runAgent({
+    transport,
+    transportOptions: { baseUrl: "mock", model: "m", temperature: 0 },
+    systemPrompt: "sys",
+    history: [],
+    userMessage: "two calls",
+    tools: [],
+    executor: { execute },
+  });
+  const req2 = transport.requests[1];
+  const ids = (req2[2].tool_calls ?? []).map((t) => t.id);
+  assert.strictEqual(ids.length, 2);
+  assert.notStrictEqual(ids[0], ids[1]); // ids must be unique
+  // Every tool_call needs exactly one matching tool message, in order.
+  const toolIds = req2.filter((m) => m.role === "tool").map((m) => m.tool_call_id);
+  assert.deepStrictEqual(toolIds, ids);
+  console.log("PASS testDuplicateToolCallIds");
+}
+
+// ---- args arriving before the opening fragment must not be dropped ----
+async function testOutOfOrderToolFragments(): Promise<void> {
+  const transport = new ScriptedTransport([
+    [
+      { type: "tool-call-args", index: 1, argsDelta: '{"name":"Data"}' },
+      { type: "tool-call-start", index: 0, id: "a", name: "get_selection" },
+      { type: "tool-call-start", index: 1, id: "b", name: "create_sheet" },
+      { type: "finish", reason: "tool_calls" },
+    ],
+    [
+      { type: "content-delta", text: "done" },
+      { type: "finish", reason: "stop" },
+    ],
+  ]);
+  const { execute, executed } = makeExecutor();
+  await runAgent({
+    transport,
+    transportOptions: { baseUrl: "mock", model: "m", temperature: 0 },
+    systemPrompt: "sys",
+    history: [],
+    userMessage: "x",
+    tools: [],
+    executor: { execute },
+    callbacks: { confirmTool: async () => true },
+  });
+  assert.strictEqual(executed.length, 2);
+  assert.strictEqual(executed[0].name, "get_selection"); // sorted by index
+  assert.strictEqual(executed[1].name, "create_sheet");
+  assert.deepStrictEqual(executed[1].args, { name: "Data" }); // args survived
+  console.log("PASS testOutOfOrderToolFragments");
+}
+
+// ---- the [DONE] sentinel must not mask a real finish_reason ----
+async function testTruncatedFinishReason(): Promise<void> {
+  const transport = new ScriptedTransport([
+    [
+      { type: "content-delta", text: "half a sen" },
+      { type: "finish", reason: "length" },
+      { type: "finish", reason: "done" },
+    ],
+  ]);
+  const result = await runAgent({
+    transport,
+    transportOptions: { baseUrl: "mock", model: "m", temperature: 0 },
+    systemPrompt: "sys",
+    history: [],
+    userMessage: "write an essay",
+    tools: [],
+    executor: { execute: makeExecutor().execute },
+  });
+  assert.strictEqual(result.truncated, true);
+  console.log("PASS testTruncatedFinishReason");
+}
+
+// ---- a throwing executor is reported to the model, and the loop continues ----
+async function testExecutorErrorIsReported(): Promise<void> {
+  const transport = new ScriptedTransport([
+    [...toolCallEvents(0, "e1", "read_range", READ_ARGS), { type: "finish", reason: "tool_calls" }],
+    [
+      { type: "content-delta", text: "recovered" },
+      { type: "finish", reason: "stop" },
+    ],
+  ]);
+  let reportedOk: boolean | undefined;
+  const result = await runAgent({
+    transport,
+    transportOptions: { baseUrl: "mock", model: "m", temperature: 0 },
+    systemPrompt: "sys",
+    history: [],
+    userMessage: "read",
+    tools: [],
+    executor: {
+      execute: async () => {
+        throw new Error('The worksheet does not exist. [ItemNotFound] Existing sheets: "Sheet1".');
+      },
+    },
+    callbacks: { onToolEnd: (_c, _s, ok) => (reportedOk = ok) },
+  });
+  assert.strictEqual(result.content, "recovered");
+  assert.strictEqual(reportedOk, false);
+  const toolMsg = transport.requests[1].find((m) => m.role === "tool");
+  assert.ok(String(JSON.parse(toolMsg!.content).error).includes("ItemNotFound"));
+  console.log("PASS testExecutorErrorIsReported");
+}
 
 // ---- writes run ungated when confirmation is off ----
 async function testNoConfirmationMode(): Promise<void> {
   const transport = new ScriptedTransport([
     [...toolCallEvents(0, "call_w", "write_range", WRITE_ARGS), { type: "finish", reason: "tool_calls" }],
-    [{ type: "content-delta", text: "Wrote it." }, { type: "finish", reason: "stop" }],
+    [
+      { type: "content-delta", text: "Wrote it." },
+      { type: "finish", reason: "stop" },
+    ],
   ]);
   const { execute, executed } = makeExecutor();
   const result = await runAgent({
@@ -225,7 +368,7 @@ function testNormalizeBase(): void {
   console.log("PASS testNormalizeBase");
 }
 
-// ---- SSE extraction unit tests (Pass 2) ----
+// ---- SSE extraction unit tests ----
 function testSseExtraction(): void {
   const { extractSsePayloads, DONE_PAYLOAD, SSE_PREFIX } = require("../src/taskpane/llm/sse");
   const NL = String.fromCharCode(10);
@@ -252,3 +395,107 @@ function testSseExtraction(): void {
   assert.strictEqual(DONE_PAYLOAD, "[" + "DONE" + "]");
   console.log("PASS testSseExtraction");
 }
+
+// ---- pure helpers from the Excel tool layer ----
+function testExcelHelpers(): void {
+  const {
+    normalizeColor,
+    cleanAddress,
+    cleanSheet,
+    gridShape,
+    reshape,
+    chartType,
+    sanitizeTableName,
+    alignment,
+  } = require("../src/taskpane/llm/excelTools");
+
+  // A color NAME must not get a "#" glued on - Excel rejects "#red".
+  assert.strictEqual(normalizeColor("red"), "red");
+  assert.strictEqual(normalizeColor("#FF0000"), "#FF0000");
+  assert.strictEqual(normalizeColor("FF0000"), "#FF0000");
+  assert.strictEqual(normalizeColor("f00"), "#f00");
+  assert.strictEqual(normalizeColor("  "), undefined);
+  assert.strictEqual(normalizeColor(42), undefined);
+
+  // Sheet-qualified addresses are a very common model output.
+  assert.strictEqual(cleanAddress("Sheet1!A1:B2"), "A1:B2");
+  assert.strictEqual(cleanAddress("'Q1 Sales'!A1"), "A1");
+  assert.strictEqual(cleanAddress(" B2:D10 "), "B2:D10");
+  assert.strictEqual(cleanAddress(undefined), "");
+  assert.strictEqual(cleanSheet("'Q1 Sales'"), "Q1 Sales");
+
+  assert.deepStrictEqual(
+    gridShape([
+      [1, 2],
+      [3, 4],
+      [5, 6],
+    ]),
+    { rows: 3, cols: 2 }
+  );
+  assert.deepStrictEqual(gridShape([1, 2, 3]), { rows: 1, cols: 3 });
+  assert.strictEqual(gridShape([[1, 2], [3]]), null); // ragged
+  assert.strictEqual(gridShape([]), null);
+
+  assert.deepStrictEqual(reshape([1, 2, 3, 4], 2, 2), [
+    [1, 2],
+    [3, 4],
+  ]);
+  assert.strictEqual(reshape([1, 2, 3], 2, 2), null);
+
+  assert.strictEqual(chartType("PIE"), "Pie");
+  assert.strictEqual(chartType("column"), "ColumnClustered");
+  assert.strictEqual(chartType("donut"), undefined);
+
+  assert.strictEqual(sanitizeTableName("Sales Data"), "Sales_Data");
+  assert.strictEqual(sanitizeTableName("A1"), undefined); // looks like a cell ref
+  assert.strictEqual(sanitizeTableName("2024"), undefined);
+
+  assert.strictEqual(alignment("CENTRE"), "Center");
+  assert.strictEqual(alignment("justify"), undefined);
+  console.log("PASS testExcelHelpers");
+}
+
+// ---- bridge target guard + connect-error unwrapping ----
+function testBridgeGuard(): void {
+  // Resolved from the repo root: this file is executed from tools/build-test/.
+  const { isAllowedBridgeTarget, describeConnectError } = require(require("path").join(process.cwd(), "llm-forward"));
+  assert.strictEqual(isAllowedBridgeTarget("http://localhost:8000"), true);
+  assert.strictEqual(isAllowedBridgeTarget("http://[::1]:8000"), true); // bracketed IPv6
+  assert.strictEqual(isAllowedBridgeTarget("http://100.66.1.2:4000"), true);
+  assert.strictEqual(isAllowedBridgeTarget("http://192.168.1.5:1234"), true);
+  assert.strictEqual(isAllowedBridgeTarget("http://8.8.8.8"), false);
+  assert.strictEqual(isAllowedBridgeTarget("http://[2001:db8::1]:80"), false);
+  assert.strictEqual(isAllowedBridgeTarget("ftp://localhost"), false);
+  assert.strictEqual(isAllowedBridgeTarget("not a url"), false);
+
+  // AggregateError.message is empty; the pane used to show only "AggregateError".
+  const agg: Error & { errors?: unknown[]; code?: string } = new Error("");
+  agg.name = "AggregateError";
+  agg.code = "ECONNREFUSED";
+  agg.errors = [Object.assign(new Error("connect ECONNREFUSED 127.0.0.1:8000"), { code: "ECONNREFUSED" })];
+  const text = describeConnectError(agg);
+  assert.ok(text.includes("ECONNREFUSED"), text);
+  assert.ok(text.includes("127.0.0.1:8000"), text);
+  console.log("PASS testBridgeGuard");
+}
+
+(async () => {
+  await testToolRoundTrip();
+  await testDeclinedWrite();
+  await testMaxStepsGuard();
+  await testNoConfirmationMode();
+  await testAbort();
+  await testAbortDuringStream();
+  await testDuplicateToolCallIds();
+  await testOutOfOrderToolFragments();
+  await testTruncatedFinishReason();
+  await testExecutorErrorIsReported();
+  testNormalizeBase();
+  testSseExtraction();
+  testExcelHelpers();
+  testBridgeGuard();
+  console.log("ALL AGENT TESTS PASSED");
+})().catch((e) => {
+  console.error("TEST FAILURE:", e);
+  process.exit(1);
+});

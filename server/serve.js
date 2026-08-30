@@ -55,16 +55,24 @@ function serveStatic(req, res) {
     urlPath = "/taskpane.html";
   }
   const resolved = path.normalize(path.join(DIST, urlPath));
-  if (!resolved.startsWith(DIST)) {
+  // Path traversal guard. The separator matters: a sibling directory named
+  // "dist-something" also starts with DIST.
+  if (resolved !== DIST && !resolved.startsWith(DIST + path.sep)) {
     res.writeHead(403).end();
-    return; // path traversal guard
+    return;
   }
   fs.readFile(resolved, (err, data) => {
     if (err) {
       res.writeHead(404, { "Content-Type": "text/plain" }).end("Not found: " + urlPath);
       return;
     }
-    res.writeHead(200, { "Content-Type": MIME[path.extname(resolved).toLowerCase()] || "application/octet-stream" });
+    const ext = path.extname(resolved).toLowerCase();
+    res.writeHead(200, {
+      "Content-Type": MIME[ext] || "application/octet-stream",
+      // Excel's WebView caches aggressively: without this a rebuilt bundle
+      // keeps serving the old pane until the user clears the WebView cache.
+      "Cache-Control": ext === ".png" || ext === ".ico" ? "public, max-age=3600" : "no-cache, must-revalidate",
+    });
     res.end(data);
   });
 }
@@ -78,8 +86,9 @@ const bridges = {
 
 function requestHandler(req, res) {
   const url = req.url || "/";
+  const pathOnly = url.split("?")[0];
   for (const prefix of Object.keys(bridges)) {
-    if (url === prefix || url.startsWith(prefix + "/")) {
+    if (pathOnly === prefix || pathOnly.startsWith(prefix + "/")) {
       req.url = url.slice(prefix.length) || "/";
       return bridges[prefix](req, res);
     }
@@ -97,6 +106,20 @@ const useTls = process.env.SERVE_TLS !== "0" && fs.existsSync(crtPath) && fs.exi
 const server = useTls
   ? https.createServer({ cert: fs.readFileSync(crtPath), key: fs.readFileSync(keyPath) }, requestHandler)
   : http.createServer(requestHandler);
+if (!fs.existsSync(path.join(DIST, "taskpane.html"))) {
+  console.error("dist/taskpane.html is missing - run `npm run build` before `npm run serve`.");
+  process.exit(1);
+}
+
+server.on("error", (err) => {
+  console.error(
+    err && err.code === "EADDRINUSE"
+      ? "Port " + PORT + " is already in use. Set SERVE_PORT to another port."
+      : "Server error: " + (err && err.message ? err.message : String(err))
+  );
+  process.exit(1);
+});
+
 server.listen(PORT, HOST, () => {
   console.log("ExcelLocal production server:");
   console.log("  pane:    " + (useTls ? "https" : "http") + "://" + HOST + ":" + PORT + "/taskpane.html" + (useTls ? "  (Office dev certs)" : "  (front with tailscale serve / Caddy for HTTPS)"));
